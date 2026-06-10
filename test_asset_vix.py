@@ -50,6 +50,57 @@ class AssetVixTests(unittest.TestCase):
         finally:
             os.unlink(path)
 
+    def test_delta_k_uses_edge_and_midpoint_intervals(self):
+        strikes = [90.0, 95.0, 100.0, 110.0]
+        self.assertEqual(asset_vix.delta_k(strikes, 0), 5.0)
+        self.assertEqual(asset_vix.delta_k(strikes, 1), 5.0)
+        self.assertEqual(asset_vix.delta_k(strikes, 2), 7.5)
+        self.assertEqual(asset_vix.delta_k(strikes, 3), 10.0)
+
+    def test_vix_term_variance_matches_reference_formula(self):
+        strikes = [90.0, 95.0, 100.0, 105.0, 110.0]
+        prices = {
+            90.0: 0.7,
+            95.0: 1.2,
+            100.0: 2.0,
+            105.0: 1.4,
+            110.0: 0.9,
+        }
+        forward = 101.25
+        k0 = 100.0
+        rate = 0.04
+        years = 30 / 365
+        expected_sum = sum(
+            asset_vix.delta_k(strikes, index)
+            / (strike * strike)
+            * math.exp(rate * years)
+            * prices[strike]
+            for index, strike in enumerate(strikes)
+        )
+        expected = (2 / years) * expected_sum - ((forward / k0 - 1) ** 2) / years
+        actual = asset_vix.vix_term_variance(strikes, prices, forward, k0, rate, years)
+        self.assertAlmostEqual(actual, expected, places=14)
+
+    def test_choose_expirations_uses_vix_window(self):
+        now = dt.datetime(2026, 1, 1, 16, 0, tzinfo=asset_vix.ET_ZONE)
+        expirations = [
+            (now + dt.timedelta(days=20)).date().isoformat(),
+            (now + dt.timedelta(days=25)).date().isoformat(),
+            (now + dt.timedelta(days=35)).date().isoformat(),
+            (now + dt.timedelta(days=40)).date().isoformat(),
+        ]
+        selected = asset_vix.choose_expirations(
+            expirations=expirations,
+            now_et=now,
+            target_days=30,
+            min_days=23,
+            max_days=37,
+            settlement_hour=16,
+            settlement_minute=0,
+            allow_extrapolation=False,
+        )
+        self.assertEqual([round(item.minutes / (24 * 60)) for item in selected], [25, 35])
+
     def test_synthetic_black_scholes_chain_produces_reasonable_vix(self):
         now = dt.datetime.now(asset_vix.ET_ZONE)
         expiry_dt = now + dt.timedelta(days=30)

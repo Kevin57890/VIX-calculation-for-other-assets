@@ -1,13 +1,14 @@
 # AssetVIX
 
 AssetVIX is a local web application and command-line tool for calculating a
-VIX-like 30-day option-implied volatility value for optionable US equities and
+VIX-style 30-day option-implied volatility value for optionable US equities and
 ETFs.
 
 The app uses MarketData.app option-chain data, US Treasury yield-curve data, and
-a model-free variance calculation inspired by the Cboe VIX methodology. It is
-designed for research, monitoring, and prototyping rather than for publishing an
-official index.
+the public SPX VIX formula structure: forward-price estimation from put-call
+parity, `K0` selection, out-of-the-money option selection, single-term variance,
+and 30-day variance interpolation. It is designed for research, monitoring, and
+prototyping rather than for publishing an official index.
 
 > AssetVIX is not the official Cboe VIX. The official VIX is a proprietary Cboe
 > index based on specific SPX/SPXW option inputs and index-governance rules.
@@ -28,12 +29,55 @@ official index.
 - Per-symbol failure reasons instead of silently publishing bad values
 - CSV output for scheduled runs and downstream analysis
 
+## Formula
+
+For each selected expiration, AssetVIX estimates the forward level:
+
+```text
+F = K + exp(RT) * (Call(K) - Put(K))
+```
+
+where `K` is the strike with the smallest absolute call/put price difference.
+
+`K0` is the highest strike less than or equal to `F`.
+
+For each selected strike, the app uses:
+
+- OTM puts when `K < K0`
+- the average of call and put midpoints when `K = K0`
+- OTM calls when `K > K0`
+
+The strike interval is:
+
+```text
+DeltaK(i) = K(i+1) - K(i)                    for the first strike
+DeltaK(i) = (K(i+1) - K(i-1)) / 2            for interior strikes
+DeltaK(i) = K(i) - K(i-1)                    for the last strike
+```
+
+Single-term variance is:
+
+```text
+sigma^2 = (2 / T) * sum[DeltaK / K^2 * exp(RT) * Q(K)]
+          - (1 / T) * (F / K0 - 1)^2
+```
+
+The final 30-day value is the square root of the interpolated 30-day variance:
+
+```text
+AssetVIX = 100 * sqrt(variance_30d)
+```
+
+By default, the app uses the SPX VIX-style expiration window of 23 to 37 days
+around the 30-day target.
+
 ## How It Works
 
 For each symbol, AssetVIX:
 
 1. Loads available option expirations from MarketData.app.
-2. Selects expiration terms around the 30-day target horizon.
+2. Selects expiration terms around the 30-day target horizon, defaulting to the
+   23-37 day VIX-style window.
 3. Loads option chains for the selected expirations.
 4. Uses call/put parity to estimate the forward level.
 5. Selects the strike at or below the forward level as `K0`.
@@ -182,6 +226,20 @@ code.
 - **Allow stale quotes with warning**: keeps stale rows but marks them clearly.
 - **Allow expiration extrapolation**: uses the nearest expirations when the
   available expirations do not bracket the 30-day target.
+
+## Methodology Boundaries
+
+The formula implementation follows the public SPX VIX mathematics. Exact
+official VIX replication also depends on Cboe's official SPX/SPXW input data,
+settlement conventions, filtering rules, dissemination rules, and index
+governance. AssetVIX can produce a VIX-style value for arbitrary optionable
+symbols, but those values are not official exchange indices.
+
+## References
+
+- [Cboe Volatility Index Methodology](https://cdn.cboe.com/resources/indices/Volatility_Index_Methodology_Cboe_Volatility_Index.pdf)
+- [Cboe Volatility Index Mathematics Methodology](https://cdn.cboe.com/resources/indices/Cboe_Volatility_Index_Mathematics_Methodology.pdf)
+- [MarketData.app API Documentation](https://www.marketdata.app/docs/api/)
 
 ## Output Fields
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Compute a VIX-like 30-day implied volatility index from MarketData.app.
+"""Compute a 30-day option-implied volatility measure from MarketData.app.
 
-This is not the official Cboe VIX. It implements the same model-free variance
-shape for an arbitrary optionable underlying and reports diagnostics when the
-input chain is not good enough.
+The variance calculation follows the public SPX VIX formula structure:
+forward from put-call parity, K0 selection, out-of-the-money option selection,
+single-term variance, and 30-day variance interpolation.
 """
 
 from __future__ import annotations
@@ -184,7 +184,7 @@ def marketdata_get(
         headers={
             "Accept": "application/json",
             "Authorization": f"Bearer {token}",
-            "User-Agent": "asset-vix-mvp/0.1",
+            "User-Agent": "asset-vix/1.0",
         },
     )
 
@@ -529,6 +529,45 @@ def consecutive_nonzero_otm(
     return included
 
 
+def delta_k(selected_strikes: Sequence[float], index: int) -> float:
+    if len(selected_strikes) < 2:
+        raise AssetVixError("At least two strikes are required for delta K")
+    if index == 0:
+        return selected_strikes[1] - selected_strikes[0]
+    if index == len(selected_strikes) - 1:
+        return selected_strikes[-1] - selected_strikes[-2]
+    return (selected_strikes[index + 1] - selected_strikes[index - 1]) / 2
+
+
+def vix_term_variance(
+    selected_strikes: Sequence[float],
+    option_prices: Dict[float, float],
+    forward: float,
+    k0: float,
+    rate: float,
+    years_to_expiration: float,
+) -> float:
+    if years_to_expiration <= 0:
+        raise AssetVixError("Time to expiration must be positive")
+    if k0 <= 0 or forward <= 0:
+        raise AssetVixError("Forward and K0 must be positive")
+
+    discount_growth = math.exp(rate * years_to_expiration)
+    contributions = (
+        (delta_k(selected_strikes, index) / (strike * strike))
+        * discount_growth
+        * option_prices[strike]
+        for index, strike in enumerate(selected_strikes)
+    )
+    variance = (
+        (2 / years_to_expiration) * math.fsum(contributions)
+        - ((forward / k0 - 1) ** 2) / years_to_expiration
+    )
+    if variance <= 0 or math.isnan(variance) or math.isinf(variance):
+        raise AssetVixError(f"Non-positive variance: {variance:g}")
+    return variance
+
+
 def compute_term_variance(
     expiration: ExpiryChoice,
     quotes: List[OptionQuote],
@@ -586,23 +625,14 @@ def compute_term_variance(
                 grouped[strike]["call"].mid + grouped[strike]["put"].mid
             ) / 2
 
-    contribution = 0.0
-    for index, strike in enumerate(selected):
-        if index == 0:
-            delta_k = selected[1] - selected[0]
-        elif index == len(selected) - 1:
-            delta_k = selected[-1] - selected[-2]
-        else:
-            delta_k = (selected[index + 1] - selected[index - 1]) / 2
-        contribution += (delta_k / (strike * strike)) * math.exp(
-            rate * expiration.years
-        ) * prices[strike]
-
-    variance = (2 / expiration.years) * contribution - (
-        (forward / k0 - 1) ** 2
-    ) / expiration.years
-    if variance <= 0 or math.isnan(variance) or math.isinf(variance):
-        raise AssetVixError(f"Non-positive variance: {variance:g}")
+    variance = vix_term_variance(
+        selected_strikes=selected,
+        option_prices=prices,
+        forward=forward,
+        k0=k0,
+        rate=rate,
+        years_to_expiration=expiration.years,
+    )
 
     updated_values = [quote.updated for quote in quotes if quote.updated is not None]
     max_age = None
@@ -1014,8 +1044,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Drop positive-bid quotes wider than this percent of mid; use 0 to disable.",
     )
     parser.add_argument("--target-days", type=float, default=30)
-    parser.add_argument("--min-days", type=float, default=7)
-    parser.add_argument("--max-days", type=float, default=60)
+    parser.add_argument("--min-days", type=float, default=23)
+    parser.add_argument("--max-days", type=float, default=37)
     parser.add_argument("--min-side-strikes", type=int, default=5)
     parser.add_argument(
         "--max-quote-age-minutes",
