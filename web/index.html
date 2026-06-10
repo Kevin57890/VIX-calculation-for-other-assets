@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AssetVIX</title>
+    <link rel="stylesheet" href="/web/styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <div>
+          <h1>AssetVIX</h1>
+          <p>A local 30-day option-implied volatility console</p>
+        </div>
+        <div class="token-actions">
+          <div class="status-pill" id="tokenStatus">
+            <span class="dot"></span>
+            <span>Checking token...</span>
+          </div>
+          <button id="switchTokenButton" class="secondary-button" type="button" title="Change MarketData token">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M15 7h1a5 5 0 0 1 0 10h-1" />
+              <path d="M9 17H8A5 5 0 0 1 8 7h1" />
+              <path d="M8 12h8" />
+            </svg>
+            <span>Change Token</span>
+          </button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <aside class="controls">
+          <section class="setup" id="tokenPanel" hidden>
+            <div class="section-head">
+              <label for="tokenInput">MarketData.app Token</label>
+              <span id="tokenPreview">Not configured</span>
+            </div>
+            <div class="token-row">
+              <input
+                id="tokenInput"
+                type="password"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="Paste your token"
+              />
+              <button id="saveTokenButton" class="icon-button" title="Test and save token">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" />
+                  <path d="M17 21v-8H7v8M7 3v5h8" />
+                </svg>
+              </button>
+            </div>
+            <p class="token-note" id="tokenNote">Saved tokens are stored locally and used for the next query.</p>
+          </section>
+
+          <section>
+            <label for="symbolsInput">Symbols</label>
+            <textarea id="symbolsInput" rows="3" spellcheck="false">SPY,QQQ,AAPL,MSFT,NVDA,TSLA</textarea>
+            <div class="chips" id="presetChips">
+              <button data-symbols="SPY,QQQ,IWM,AAPL,MSFT,NVDA,TSLA,AMZN,META,GOOGL">Core</button>
+              <button data-symbols="SPY,QQQ,IWM,DIA,TLT,GLD,SLV,HYG,EEM,XLE,XLF,XLK,XLV,XLI,XLY,XLP,XLC,XLU,XLB,XBI,SMH,KRE,ARKK,USO,FXI">ETF</button>
+              <button data-symbols="SPY">SPY</button>
+            </div>
+          </section>
+
+          <section class="grid-two">
+            <label>
+              Data mode
+              <select id="modeSelect">
+                <option value="delayed">delayed</option>
+                <option value="cached">cached</option>
+                <option value="live">live</option>
+              </select>
+            </label>
+            <label>
+              fallback
+              <select id="fallbackSelect">
+                <option value="">none</option>
+                <option value="delayed">delayed</option>
+                <option value="live">live</option>
+              </select>
+            </label>
+          </section>
+
+          <section class="grid-two">
+            <label>
+              Strike limit
+              <input id="strikeLimitInput" type="number" min="20" max="500" value="120" />
+            </label>
+            <label>
+              Quote age
+              <input id="quoteAgeInput" type="number" min="1" max="1440" value="45" />
+            </label>
+          </section>
+
+          <section class="grid-two">
+            <label>
+              Max spread %
+              <input id="spreadInput" type="number" min="0" max="500" value="200" />
+            </label>
+            <label>
+              Delay sec
+              <input id="delayInput" type="number" min="0" max="10" step="0.05" value="0.25" />
+            </label>
+          </section>
+
+          <section class="toggles">
+            <label>
+              <input id="allowStaleInput" type="checkbox" checked />
+              Allow stale quotes with warning
+            </label>
+            <label>
+              <input id="allowExtrapolationInput" type="checkbox" />
+              Allow expiration extrapolation
+            </label>
+          </section>
+
+          <button id="queryButton" class="primary-button">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m21 21-4.3-4.3" />
+              <circle cx="11" cy="11" r="7" />
+            </svg>
+            <span id="queryButtonLabel">Calculate</span>
+          </button>
+        </aside>
+
+        <section class="result-stage">
+          <div class="hero-result" id="heroResult">
+            <div>
+              <p class="label">30D AssetVIX</p>
+              <strong id="mainValue">--</strong>
+              <span id="mainSymbol">Waiting for query</span>
+            </div>
+            <div class="hero-meta">
+              <span id="mainStatus">idle</span>
+              <span id="mainExpirations">--</span>
+              <span id="mainAge">--</span>
+            </div>
+          </div>
+
+          <div class="detail-grid">
+            <div>
+              <span>Forward</span>
+              <strong id="mainForward">--</strong>
+            </div>
+            <div>
+              <span>K0</span>
+              <strong id="mainK0">--</strong>
+            </div>
+            <div>
+              <span>Strikes</span>
+              <strong id="mainStrikes">--</strong>
+            </div>
+            <div>
+              <span>Rate</span>
+              <strong id="mainRates">--</strong>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <div class="table-head">
+              <h2>Results</h2>
+              <p id="lastRun">Not run yet</p>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Symbol</th>
+                  <th>Status</th>
+                  <th>30D</th>
+                  <th>Expirations</th>
+                  <th>Quote Age</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody id="resultsBody">
+                <tr>
+                  <td colspan="6" class="empty">Enter symbols and click Calculate</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/web/app.js"></script>
+  </body>
+</html>
