@@ -184,7 +184,7 @@ def marketdata_get(
         headers={
             "Accept": "application/json",
             "Authorization": f"Bearer {token}",
-            "User-Agent": "asset-vix/1.0",
+            "User-Agent": "AssetVIX/1.0",
         },
     )
 

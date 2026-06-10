@@ -286,7 +286,7 @@ class AssetVixHandler(BaseHTTPRequestHandler):
     server_version = "AssetVIXLocal/0.1"
 
     def log_message(self, fmt: str, *args: Any) -> None:
-        sys.stderr.write("[asset-vix] " + fmt % args + "\n")
+        sys.stderr.write("[AssetVIX] " + fmt % args + "\n")
 
     def send_json(self, payload: Dict[str, Any], status: int = 200) -> None:
         encoded = json.dumps(payload, ensure_ascii=False).encode("utf-8")

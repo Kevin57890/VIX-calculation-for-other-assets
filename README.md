@@ -106,8 +106,8 @@ standard library.
 Download or clone the repository:
 
 ```bash
-git clone https://github.com/Kevin57890/asset-vix.git
-cd asset-vix
+git clone https://github.com/Kevin57890/VIX-calculation-for-other-assets.git
+cd VIX-calculation-for-other-assets
 ```
 
 Optional, but safe for deployment tools:
