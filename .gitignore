@@ -1,5 +1,6 @@
 .env
 results.csv
+records/
 __pycache__/
 *.pyc
 .DS_Store

@@ -19,6 +19,9 @@ const queryButton = document.querySelector("#queryButton");
 const queryButtonLabel = document.querySelector("#queryButtonLabel");
 const resultsBody = document.querySelector("#resultsBody");
 const lastRun = document.querySelector("#lastRun");
+const historyBody = document.querySelector("#historyBody");
+const historyNote = document.querySelector("#historyNote");
+const refreshHistoryButton = document.querySelector("#refreshHistoryButton");
 
 const mainValue = document.querySelector("#mainValue");
 const mainSymbol = document.querySelector("#mainSymbol");
@@ -118,6 +121,18 @@ function formatValue(value) {
   return Number.isFinite(numeric) ? numeric.toFixed(2) : String(value);
 }
 
+function formatDateTime(value) {
+  if (!value) return "--";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString();
+}
+
+function shortRunId(value) {
+  if (!value) return "--";
+  return String(value).slice(0, 8);
+}
+
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => {
     const entities = {
@@ -189,6 +204,43 @@ function renderRows(rows) {
   lastRun.textContent = `Last run: ${new Date().toLocaleString()}`;
 }
 
+function renderHistory(rows) {
+  historyBody.innerHTML = "";
+  if (!rows.length) {
+    historyBody.innerHTML = '<tr><td colspan="6" class="empty">No recorded calculations yet</td></tr>';
+    historyNote.textContent = "Latest recorded calculations";
+    return;
+  }
+
+  for (const row of rows.slice().reverse()) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${escapeHtml(formatDateTime(row.recorded_at_utc || row.ts_utc))}</td>
+      <td><span class="run-id">${escapeHtml(shortRunId(row.run_id))}</span></td>
+      <td><strong>${escapeHtml(row.symbol || "")}</strong></td>
+      <td><span class="badge ${badgeClass(row.status)}">${escapeHtml(row.status || "")}</span></td>
+      <td>${escapeHtml(formatValue(row.asset_vix_30d))}</td>
+      <td>${escapeHtml(row.reason || "")}</td>
+    `;
+    historyBody.appendChild(tr);
+  }
+  historyNote.textContent = `${rows.length} latest rows saved locally`;
+}
+
+async function loadHistory() {
+  try {
+    const response = await fetch("/api/history?limit=25", { cache: "no-store" });
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || "History request failed");
+    }
+    renderHistory(data.rows || []);
+  } catch (error) {
+    historyBody.innerHTML = `<tr><td colspan="6" class="empty">${escapeHtml(error.message)}</td></tr>`;
+    historyNote.textContent = "History unavailable";
+  }
+}
+
 function buildQueryPayload() {
   return {
     symbols: symbolsInput.value,
@@ -214,6 +266,7 @@ async function runQuery() {
   try {
     const data = await api("/api/query", buildQueryPayload());
     renderRows(data.rows || []);
+    await loadHistory();
   } catch (error) {
     resultsBody.innerHTML = `<tr><td colspan="6" class="empty">${escapeHtml(error.message)}</td></tr>`;
     updateMain({
@@ -276,6 +329,7 @@ document.querySelectorAll("[data-symbols]").forEach((button) => {
 
 switchTokenButton.addEventListener("click", toggleTokenPanel);
 saveTokenButton.addEventListener("click", saveToken);
+refreshHistoryButton.addEventListener("click", loadHistory);
 tokenInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") saveToken();
 });
@@ -283,3 +337,4 @@ queryButton.addEventListener("click", runQuery);
 
 loadStatus();
 loadUniverses();
+loadHistory();

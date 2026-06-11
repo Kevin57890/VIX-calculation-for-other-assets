@@ -20,6 +20,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -38,6 +39,7 @@ TREASURY_XML = (
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_ENV_PATH = os.path.join(APP_DIR, ".env")
 DEFAULT_UNIVERSE_PATH = os.path.join(APP_DIR, "universes.csv")
+DEFAULT_RECORDS_PATH = os.path.join(APP_DIR, "records", "calculations.csv")
 ET_ZONE = ZoneInfo("America/New_York") if ZoneInfo else dt.timezone.utc
 UTC = dt.timezone.utc
 MINUTES_IN_YEAR = 365 * 24 * 60
@@ -845,9 +847,13 @@ def compute_symbol_safe(symbol: str, args: argparse.Namespace) -> Dict[str, Any]
 def write_csv_rows(path: str, rows: Sequence[Dict[str, Any]]) -> None:
     if not rows:
         return
+    directory = os.path.dirname(os.path.abspath(path))
+    if directory:
+        os.makedirs(directory, exist_ok=True)
     exists = os.path.exists(path)
+    has_content = exists and os.path.getsize(path) > 0
     fieldnames = list(rows[0].keys())
-    if exists:
+    if has_content:
         with open(path, "r", newline="", encoding="utf-8") as handle:
             reader = csv.DictReader(handle)
             existing_fieldnames = reader.fieldnames or []
@@ -864,9 +870,42 @@ def write_csv_rows(path: str, rows: Sequence[Dict[str, Any]]) -> None:
             fieldnames = merged
     with open(path, "a", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
-        if not exists:
+        if not has_content:
             writer.writeheader()
         writer.writerows(rows)
+
+
+def record_rows(
+    path: str,
+    rows: Sequence[Dict[str, Any]],
+    source: str,
+    run_id: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    if not rows:
+        return []
+
+    record_id = run_id or uuid.uuid4().hex
+    recorded_at = dt.datetime.now(UTC).isoformat(timespec="seconds")
+    record_rows = []
+    for row in rows:
+        enriched = {
+            "recorded_at_utc": recorded_at,
+            "run_id": record_id,
+            "source": source,
+        }
+        enriched.update(row)
+        record_rows.append(enriched)
+
+    write_csv_rows(path, record_rows)
+    return record_rows
+
+
+def read_recent_csv_rows(path: str, limit: int = 50) -> List[Dict[str, str]]:
+    if limit <= 0 or not os.path.exists(path):
+        return []
+    with open(path, "r", newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    return rows[-limit:]
 
 
 def print_rows(rows: Sequence[Dict[str, Any]], as_json: bool) -> None:
@@ -1067,7 +1106,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Manual annualized decimal rate, e.g. 0.045. Overrides Treasury XML.",
     )
-    parser.add_argument("--csv", default=None, help="Append results to this CSV path.")
+    parser.add_argument(
+        "--csv",
+        default=DEFAULT_RECORDS_PATH,
+        help="Append every calculation to this CSV path.",
+    )
+    parser.add_argument(
+        "--no-record",
+        action="store_true",
+        help="Do not append calculations to the CSV record file.",
+    )
     parser.add_argument("--json", action="store_true", help="Print JSON lines.")
     parser.add_argument(
         "--request-delay-seconds",
@@ -1109,8 +1157,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     while True:
         rows = compute_symbols(symbols, args)
         print_rows(rows, as_json=args.json)
-        if args.csv:
-            write_csv_rows(args.csv, rows)
+        if not args.no_record and args.csv:
+            record_rows(args.csv, rows, source="cli")
         if not args.watch:
             break
         time.sleep(args.interval_seconds)

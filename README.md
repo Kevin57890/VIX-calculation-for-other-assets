@@ -27,7 +27,7 @@ prototyping rather than for publishing an official index.
 - Wide-spread quote filtering
 - Stale quote diagnostics
 - Per-symbol failure reasons instead of silently publishing bad values
-- CSV output for scheduled runs and downstream analysis
+- Automatic local CSV records for every calculation
 
 ## Formula
 
@@ -176,8 +176,7 @@ Core liquid universe:
 ```bash
 python3 asset_vix.py \
   --universe core \
-  --mode delayed \
-  --csv results.csv
+  --mode delayed
 ```
 
 Run every five minutes:
@@ -186,9 +185,21 @@ Run every five minutes:
 python3 asset_vix.py \
   --universe core \
   --mode delayed \
-  --csv results.csv \
   --watch \
   --interval-seconds 300
+```
+
+Each command-line calculation is recorded by default. To write to a custom
+record file:
+
+```bash
+python3 asset_vix.py --symbols SPY,QQQ --csv records/custom.csv
+```
+
+To run without recording:
+
+```bash
+python3 asset_vix.py --symbols SPY --no-record
 ```
 
 You can also provide the token through the shell:
@@ -196,6 +207,24 @@ You can also provide the token through the shell:
 ```bash
 export MARKETDATA_TOKEN="your_marketdata_token_here"
 ```
+
+## Automatic Records
+
+The web app and command-line tool append every calculation to:
+
+```text
+records/calculations.csv
+```
+
+The file is created automatically on the first calculation. Each saved row
+includes `recorded_at_utc`, `run_id`, and `source` fields in addition to the
+calculation diagnostics.
+
+In the web app, the **History** table shows the latest recorded rows after every
+query. Use **Download CSV** to export the full local record file.
+
+The `records/` directory is ignored by Git so downloaded copies of this project
+do not publish local calculation history.
 
 ## Preset Universes
 
@@ -293,6 +322,7 @@ Do not commit or distribute local runtime files:
 
 - `.env`
 - `results.csv`
+- `records/`
 - `__pycache__/`
 - `.pytest_cache/`
 

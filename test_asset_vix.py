@@ -101,6 +101,36 @@ class AssetVixTests(unittest.TestCase):
         )
         self.assertEqual([round(item.minutes / (24 * 60)) for item in selected], [25, 35])
 
+    def test_record_rows_adds_metadata_and_reads_recent_rows(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "records", "calculations.csv")
+            rows = [
+                {
+                    "ts_utc": "2026-01-01T00:00:00+00:00",
+                    "symbol": "SPY",
+                    "status": "ok",
+                    "asset_vix_30d": 18.5,
+                },
+                {
+                    "ts_utc": "2026-01-01T00:01:00+00:00",
+                    "symbol": "QQQ",
+                    "status": "error",
+                    "asset_vix_30d": None,
+                },
+            ]
+
+            recorded = asset_vix.record_rows(path, rows, source="test", run_id="run123")
+            self.assertTrue(os.path.exists(path))
+            self.assertEqual(len(recorded), 2)
+            self.assertEqual(recorded[0]["run_id"], "run123")
+            self.assertEqual(recorded[0]["source"], "test")
+            self.assertIn("recorded_at_utc", recorded[0])
+
+            recent = asset_vix.read_recent_csv_rows(path, limit=1)
+            self.assertEqual(len(recent), 1)
+            self.assertEqual(recent[0]["symbol"], "QQQ")
+            self.assertEqual(recent[0]["run_id"], "run123")
+
     def test_synthetic_black_scholes_chain_produces_reasonable_vix(self):
         now = dt.datetime.now(asset_vix.ET_ZONE)
         expiry_dt = now + dt.timedelta(days=30)

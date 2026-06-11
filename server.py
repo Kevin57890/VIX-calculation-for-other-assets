@@ -24,7 +24,7 @@ import asset_vix as calc
 APP_DIR = Path(__file__).resolve().parent
 WEB_DIR = APP_DIR / "web"
 ENV_PATH = APP_DIR / ".env"
-RESULTS_PATH = APP_DIR / "results.csv"
+RECORDS_PATH = APP_DIR / "records" / "calculations.csv"
 UNIVERSE_PATH = APP_DIR / "universes.csv"
 _ACTIVE_TOKEN: Optional[str] = None
 
@@ -278,8 +278,7 @@ def compute_rows(payload: Dict[str, Any], token: str) -> List[Dict[str, Any]]:
         raise ValueError("Enter at least one symbol")
 
     rows = calc.compute_symbols(symbols, args)
-    calc.write_csv_rows(str(RESULTS_PATH), rows)
-    return rows
+    return calc.record_rows(str(RECORDS_PATH), rows, source="web")
 
 
 class AssetVixHandler(BaseHTTPRequestHandler):
@@ -310,8 +309,53 @@ class AssetVixHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def send_records_csv(self, head_only: bool = False) -> None:
+        if RECORDS_PATH.exists() and RECORDS_PATH.is_file():
+            data = RECORDS_PATH.read_bytes()
+        else:
+            headers = [
+                "recorded_at_utc",
+                "run_id",
+                "source",
+                "ts_utc",
+                "symbol",
+                "status",
+                "asset_vix_30d",
+                "variance_30d",
+                "target_days",
+                "rate_source",
+                "mode",
+                "http_statuses",
+                "expirations",
+                "days",
+                "rates",
+                "forwards",
+                "k0",
+                "strike_counts",
+                "put_counts",
+                "call_counts",
+                "max_quote_age_minutes",
+                "reason",
+            ]
+            data = (",".join(headers) + "\n").encode("utf-8")
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/csv; charset=utf-8")
+        self.send_header(
+            "Content-Disposition",
+            'attachment; filename="assetvix-records.csv"',
+        )
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        if not head_only:
+            self.wfile.write(data)
+
     def do_HEAD(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/api/records.csv":
+            self.send_records_csv(head_only=True)
+            return
         target = WEB_DIR / "index.html" if parsed.path in {"/", "/index.html"} else None
         if target is None:
             self.send_error(HTTPStatus.NOT_FOUND)
@@ -335,9 +379,29 @@ class AssetVixHandler(BaseHTTPRequestHandler):
                     "tokenPreview": token_info["preview"],
                     "tokenFormatOk": token_info["formatOk"],
                     "tokenFormatReason": token_info["formatReason"],
-                    "resultsPath": str(RESULTS_PATH),
+                    "recordsPath": str(RECORDS_PATH),
                 }
                 )
+            return
+
+        if parsed.path == "/api/history":
+            query = urllib.parse.parse_qs(parsed.query)
+            try:
+                limit = int((query.get("limit") or ["25"])[0])
+            except ValueError:
+                limit = 25
+            limit = min(max(limit, 1), 500)
+            self.send_json(
+                {
+                    "ok": True,
+                    "rows": calc.read_recent_csv_rows(str(RECORDS_PATH), limit=limit),
+                    "recordsPath": str(RECORDS_PATH),
+                }
+            )
+            return
+
+        if parsed.path == "/api/records.csv":
+            self.send_records_csv()
             return
 
         if parsed.path == "/api/universes":

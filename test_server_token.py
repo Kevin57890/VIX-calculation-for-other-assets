@@ -105,6 +105,38 @@ class ServerTokenTests(unittest.TestCase):
         finally:
             server.calc.marketdata_get = original
 
+    def test_compute_rows_records_web_results(self):
+        original_compute = server.calc.compute_symbols
+        original_records_path = server.RECORDS_PATH
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                server.RECORDS_PATH = Path(directory) / "records" / "calculations.csv"
+
+                def fake_compute(symbols, args):
+                    self.assertEqual(symbols, ["SPY"])
+                    self.assertEqual(args.token, "valid-token-123456")
+                    return [
+                        {
+                            "ts_utc": "2026-01-01T00:00:00+00:00",
+                            "symbol": "SPY",
+                            "status": "ok",
+                            "asset_vix_30d": 18.5,
+                        }
+                    ]
+
+                server.calc.compute_symbols = fake_compute
+                rows = server.compute_rows({"symbols": "SPY"}, "valid-token-123456")
+                self.assertEqual(rows[0]["source"], "web")
+                self.assertIn("run_id", rows[0])
+                self.assertTrue(server.RECORDS_PATH.exists())
+
+                recent = server.calc.read_recent_csv_rows(str(server.RECORDS_PATH), limit=1)
+                self.assertEqual(recent[0]["symbol"], "SPY")
+                self.assertEqual(recent[0]["source"], "web")
+            finally:
+                server.calc.compute_symbols = original_compute
+                server.RECORDS_PATH = original_records_path
+
 
 if __name__ == "__main__":
     unittest.main()

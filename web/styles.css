@@ -135,6 +135,33 @@ h1 {
   stroke-width: 2;
 }
 
+.link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--accent-dark);
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 760;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.link-button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: 320px 1fr;
@@ -430,6 +457,27 @@ textarea:focus {
   font-size: 13px;
 }
 
+.history-wrap {
+  border-top: 1px solid var(--line);
+  background: #fbfcfc;
+}
+
+.history-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.run-id {
+  color: var(--muted);
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    monospace;
+  font-size: 12px;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -534,5 +582,9 @@ tbody tr:hover {
 
   table {
     min-width: 720px;
+  }
+
+  .history-actions {
+    justify-content: flex-start;
   }
 }
