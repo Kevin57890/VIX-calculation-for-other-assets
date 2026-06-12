@@ -28,6 +28,7 @@ prototyping rather than for publishing an official index.
 - Stale quote diagnostics
 - Per-symbol failure reasons instead of silently publishing bad values
 - Automatic local CSV records for every calculation
+- Browser time-series chart built from recorded AssetVIX points
 
 ## Formula
 
@@ -220,8 +221,10 @@ The file is created automatically on the first calculation. Each saved row
 includes `recorded_at_utc`, `run_id`, and `source` fields in addition to the
 calculation diagnostics.
 
-In the web app, the **History** table shows the latest recorded rows after every
-query. Use **Download CSV** to export the full local record file.
+In the web app, the **Time Series** chart connects recorded AssetVIX values by
+record time. The chart can show all recorded symbols or one selected symbol. The
+**History** table shows the latest recorded rows after every query. Use
+**Download CSV** to export the full local record file.
 
 The `records/` directory is ignored by Git so downloaded copies of this project
 do not publish local calculation history.
@@ -255,6 +258,8 @@ code.
 - **Allow stale quotes with warning**: keeps stale rows but marks them clearly.
 - **Allow expiration extrapolation**: uses the nearest expirations when the
   available expirations do not bracket the 30-day target.
+- **Time Series**: plots recorded numeric AssetVIX points over time from the
+  local records file.
 
 ## Methodology Boundaries
 

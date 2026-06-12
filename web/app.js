@@ -22,6 +22,12 @@ const lastRun = document.querySelector("#lastRun");
 const historyBody = document.querySelector("#historyBody");
 const historyNote = document.querySelector("#historyNote");
 const refreshHistoryButton = document.querySelector("#refreshHistoryButton");
+const chartSymbolSelect = document.querySelector("#chartSymbolSelect");
+const chartNote = document.querySelector("#chartNote");
+const chartSummary = document.querySelector("#chartSummary");
+const chartCanvas = document.querySelector("#assetVixChart");
+const chartEmpty = document.querySelector("#chartEmpty");
+const chartLegend = document.querySelector("#chartLegend");
 
 const mainValue = document.querySelector("#mainValue");
 const mainSymbol = document.querySelector("#mainSymbol");
@@ -34,6 +40,20 @@ const mainStrikes = document.querySelector("#mainStrikes");
 const mainRates = document.querySelector("#mainRates");
 let tokenConfigured = false;
 let tokenPanelForcedOpen = false;
+let historyRows = [];
+const HISTORY_FETCH_LIMIT = 500;
+const HISTORY_TABLE_LIMIT = 25;
+const ALL_SYMBOLS = "__all__";
+const chartColors = [
+  "#0b8f83",
+  "#315f9f",
+  "#b7791f",
+  "#8a4ab8",
+  "#ba2f3a",
+  "#177245",
+  "#53606f",
+  "#c44f24",
+];
 
 function setTokenStatus(configured, source, preview, formatOk = true, formatReason = "") {
   const usable = configured && formatOk;
@@ -133,6 +153,35 @@ function shortRunId(value) {
   return String(value).slice(0, 8);
 }
 
+function parseRecordTime(row) {
+  const date = new Date(row.recorded_at_utc || row.ts_utc || "");
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function parseAssetVix(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function formatAxisTime(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "--";
+  return date.toLocaleString(undefined, {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function chartColor(symbol, index = 0) {
+  let hash = index;
+  for (const char of String(symbol || "")) {
+    hash = (hash * 31 + char.charCodeAt(0)) % chartColors.length;
+  }
+  return chartColors[Math.abs(hash) % chartColors.length];
+}
+
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => {
     const entities = {
@@ -205,14 +254,15 @@ function renderRows(rows) {
 }
 
 function renderHistory(rows) {
+  const tableRows = rows.slice(-HISTORY_TABLE_LIMIT);
   historyBody.innerHTML = "";
-  if (!rows.length) {
+  if (!tableRows.length) {
     historyBody.innerHTML = '<tr><td colspan="6" class="empty">No recorded calculations yet</td></tr>';
     historyNote.textContent = "Latest recorded calculations";
     return;
   }
 
-  for (const row of rows.slice().reverse()) {
+  for (const row of tableRows.slice().reverse()) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${escapeHtml(formatDateTime(row.recorded_at_utc || row.ts_utc))}</td>
@@ -224,20 +274,237 @@ function renderHistory(rows) {
     `;
     historyBody.appendChild(tr);
   }
-  historyNote.textContent = `${rows.length} latest rows saved locally`;
+  historyNote.textContent = `${tableRows.length} latest rows shown`;
+}
+
+function chartPoints(rows) {
+  return rows
+    .map((row) => {
+      const time = parseRecordTime(row);
+      const value = parseAssetVix(row.asset_vix_30d);
+      const status = String(row.status || "");
+      if (!time || value === null || status === "error") return null;
+      return {
+        symbol: String(row.symbol || "").toUpperCase() || "UNKNOWN",
+        time,
+        value,
+        status,
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => left.time - right.time);
+}
+
+function updateChartSymbolOptions(points) {
+  const previous = chartSymbolSelect.value || ALL_SYMBOLS;
+  const symbols = Array.from(new Set(points.map((point) => point.symbol))).sort();
+  chartSymbolSelect.innerHTML = '<option value="__all__">All</option>';
+  for (const symbol of symbols) {
+    const option = document.createElement("option");
+    option.value = symbol;
+    option.textContent = symbol;
+    chartSymbolSelect.appendChild(option);
+  }
+  chartSymbolSelect.value =
+    previous === ALL_SYMBOLS || symbols.includes(previous) ? previous : ALL_SYMBOLS;
+}
+
+function updateChartSummary(points) {
+  const values = points.map((point) => point.value);
+  const latest = points[points.length - 1];
+  const low = values.length ? Math.min(...values) : null;
+  const high = values.length ? Math.max(...values) : null;
+  const items = [
+    latest ? formatValue(latest.value) : "--",
+    low === null ? "--" : formatValue(low),
+    high === null ? "--" : formatValue(high),
+    String(points.length || "--"),
+  ];
+  chartSummary.querySelectorAll("strong").forEach((node, index) => {
+    node.textContent = items[index] || "--";
+  });
+}
+
+function groupChartPoints(points) {
+  const groups = new Map();
+  for (const point of points) {
+    if (!groups.has(point.symbol)) groups.set(point.symbol, []);
+    groups.get(point.symbol).push(point);
+  }
+  return Array.from(groups.entries()).map(([symbol, values], index) => ({
+    symbol,
+    values,
+    color: chartColor(symbol, index),
+  }));
+}
+
+function drawChart(points) {
+  const parent = chartCanvas.parentElement;
+  const width = Math.max(320, Math.floor(parent.clientWidth));
+  const height = 320;
+  const dpr = window.devicePixelRatio || 1;
+  chartCanvas.style.width = `${width}px`;
+  chartCanvas.style.height = `${height}px`;
+  chartCanvas.width = Math.floor(width * dpr);
+  chartCanvas.height = Math.floor(height * dpr);
+
+  const context = chartCanvas.getContext("2d");
+  if (!context) {
+    chartEmpty.hidden = false;
+    chartEmpty.textContent = "Chart unavailable";
+    chartLegend.innerHTML = "";
+    return;
+  }
+  context.setTransform(dpr, 0, 0, dpr, 0, 0);
+  context.clearRect(0, 0, width, height);
+  context.fillStyle = "#fbfcfc";
+  context.fillRect(0, 0, width, height);
+
+  if (!points.length) {
+    chartEmpty.hidden = false;
+    chartLegend.innerHTML = "";
+    return;
+  }
+  chartEmpty.hidden = true;
+
+  const margin = { top: 20, right: 18, bottom: 44, left: 58 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+  const times = points.map((point) => point.time.getTime());
+  const values = points.map((point) => point.value);
+  let minTime = Math.min(...times);
+  let maxTime = Math.max(...times);
+  let minValue = Math.min(...values);
+  let maxValue = Math.max(...values);
+
+  if (minTime === maxTime) {
+    minTime -= 30 * 60 * 1000;
+    maxTime += 30 * 60 * 1000;
+  }
+  if (minValue === maxValue) {
+    minValue -= 1;
+    maxValue += 1;
+  } else {
+    const padding = (maxValue - minValue) * 0.12;
+    minValue = Math.max(0, minValue - padding);
+    maxValue += padding;
+  }
+
+  const xFor = (time) =>
+    margin.left + ((time.getTime() - minTime) / (maxTime - minTime)) * plotWidth;
+  const yFor = (value) =>
+    margin.top + plotHeight - ((value - minValue) / (maxValue - minValue)) * plotHeight;
+
+  context.strokeStyle = "#dbe3e2";
+  context.lineWidth = 1;
+  context.fillStyle = "#677371";
+  context.font = "12px Inter, system-ui, sans-serif";
+  context.textBaseline = "middle";
+
+  for (let index = 0; index <= 4; index += 1) {
+    const y = margin.top + (plotHeight * index) / 4;
+    const value = maxValue - ((maxValue - minValue) * index) / 4;
+    context.beginPath();
+    context.moveTo(margin.left, y);
+    context.lineTo(width - margin.right, y);
+    context.stroke();
+    context.textAlign = "right";
+    context.fillText(value.toFixed(1), margin.left - 10, y);
+  }
+
+  context.textBaseline = "top";
+  for (let index = 0; index <= 3; index += 1) {
+    const x = margin.left + (plotWidth * index) / 3;
+    const time = new Date(minTime + ((maxTime - minTime) * index) / 3);
+    context.beginPath();
+    context.moveTo(x, margin.top);
+    context.lineTo(x, margin.top + plotHeight);
+    context.stroke();
+    context.textAlign = index === 0 ? "left" : index === 3 ? "right" : "center";
+    context.fillText(formatAxisTime(time), x, margin.top + plotHeight + 14);
+  }
+
+  context.strokeStyle = "#9aa6a4";
+  context.beginPath();
+  context.moveTo(margin.left, margin.top);
+  context.lineTo(margin.left, margin.top + plotHeight);
+  context.lineTo(width - margin.right, margin.top + plotHeight);
+  context.stroke();
+
+  const groups = groupChartPoints(points);
+  for (const group of groups) {
+    context.strokeStyle = group.color;
+    context.fillStyle = group.color;
+    context.lineWidth = 2;
+    context.beginPath();
+    group.values.forEach((point, index) => {
+      const x = xFor(point.time);
+      const y = yFor(point.value);
+      if (index === 0) context.moveTo(x, y);
+      else context.lineTo(x, y);
+    });
+    context.stroke();
+
+    for (const point of group.values) {
+      const x = xFor(point.time);
+      const y = yFor(point.value);
+      context.beginPath();
+      context.arc(x, y, 3.4, 0, Math.PI * 2);
+      context.fill();
+      context.strokeStyle = "#ffffff";
+      context.lineWidth = 1.4;
+      context.stroke();
+      context.strokeStyle = group.color;
+    }
+  }
+
+  chartLegend.innerHTML = groups
+    .map(
+      (group) => `
+        <span>
+          <i style="background:${escapeHtml(group.color)}"></i>
+          ${escapeHtml(group.symbol)}
+        </span>
+      `
+    )
+    .join("");
+}
+
+function renderChart(rows) {
+  const points = chartPoints(rows);
+  updateChartSymbolOptions(points);
+  const selected = chartSymbolSelect.value || ALL_SYMBOLS;
+  const visible =
+    selected === ALL_SYMBOLS
+      ? points
+      : points.filter((point) => point.symbol === selected);
+
+  updateChartSummary(visible);
+  drawChart(visible);
+  const symbolCount = new Set(points.map((point) => point.symbol)).size;
+  chartNote.textContent = points.length
+    ? `${points.length} numeric points across ${symbolCount} symbols`
+    : "Recorded AssetVIX points";
 }
 
 async function loadHistory() {
   try {
-    const response = await fetch("/api/history?limit=25", { cache: "no-store" });
+    const response = await fetch(
+      `/api/history?limit=${HISTORY_FETCH_LIMIT}`,
+      { cache: "no-store" }
+    );
     const data = await response.json();
     if (!response.ok || !data.ok) {
       throw new Error(data.error || "History request failed");
     }
-    renderHistory(data.rows || []);
+    historyRows = data.rows || [];
+    renderHistory(historyRows);
+    renderChart(historyRows);
   } catch (error) {
     historyBody.innerHTML = `<tr><td colspan="6" class="empty">${escapeHtml(error.message)}</td></tr>`;
     historyNote.textContent = "History unavailable";
+    chartEmpty.hidden = false;
+    chartLegend.innerHTML = "";
   }
 }
 
@@ -330,6 +597,8 @@ document.querySelectorAll("[data-symbols]").forEach((button) => {
 switchTokenButton.addEventListener("click", toggleTokenPanel);
 saveTokenButton.addEventListener("click", saveToken);
 refreshHistoryButton.addEventListener("click", loadHistory);
+chartSymbolSelect.addEventListener("change", () => renderChart(historyRows));
+window.addEventListener("resize", () => renderChart(historyRows));
 tokenInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") saveToken();
 });

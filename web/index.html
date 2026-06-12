@@ -182,6 +182,44 @@
             </table>
           </div>
 
+          <div class="chart-wrap">
+            <div class="table-head chart-head">
+              <div>
+                <h2>Time Series</h2>
+                <p id="chartNote">Recorded AssetVIX points</p>
+              </div>
+              <label class="chart-symbol-control">
+                Symbol
+                <select id="chartSymbolSelect">
+                  <option value="__all__">All</option>
+                </select>
+              </label>
+            </div>
+            <div class="chart-summary" id="chartSummary">
+              <div>
+                <span>Latest</span>
+                <strong>--</strong>
+              </div>
+              <div>
+                <span>Low</span>
+                <strong>--</strong>
+              </div>
+              <div>
+                <span>High</span>
+                <strong>--</strong>
+              </div>
+              <div>
+                <span>Points</span>
+                <strong>--</strong>
+              </div>
+            </div>
+            <div class="chart-frame">
+              <canvas id="assetVixChart" width="960" height="320" aria-label="AssetVIX time series chart"></canvas>
+              <div class="chart-empty" id="chartEmpty">No numeric records yet</div>
+            </div>
+            <div class="chart-legend" id="chartLegend"></div>
+          </div>
+
           <div class="table-wrap history-wrap">
             <div class="table-head">
               <div>
