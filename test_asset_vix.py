@@ -31,9 +31,17 @@ def bs_price(spot, strike, years, rate, vol, side):
 
 
 class AssetVixTests(unittest.TestCase):
-    def test_unix_timestamp_normalization_accepts_seconds_and_millis(self):
+    def test_unix_timestamp_normalization_accepts_common_epoch_units(self):
         self.assertEqual(asset_vix._to_unix_seconds(1_700_000_000), 1_700_000_000)
         self.assertEqual(asset_vix._to_unix_seconds(1_700_000_000_000), 1_700_000_000)
+        self.assertEqual(
+            asset_vix._to_unix_seconds(1_700_000_000_000_000),
+            1_700_000_000,
+        )
+        self.assertEqual(
+            asset_vix._to_unix_seconds(1_700_000_000_000_000_000),
+            1_700_000_000,
+        )
 
     def test_universe_loader_and_resolver(self):
         with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as handle:
@@ -80,6 +88,28 @@ class AssetVixTests(unittest.TestCase):
         expected = (2 / years) * expected_sum - ((forward / k0 - 1) ** 2) / years
         actual = asset_vix.vix_term_variance(strikes, prices, forward, k0, rate, years)
         self.assertAlmostEqual(actual, expected, places=14)
+
+    def test_missing_quote_ages_stay_missing(self):
+        def term(age):
+            return asset_vix.TermVariance(
+                expiration="2026-02-01",
+                days=30,
+                years=30 / 365,
+                rate=0.04,
+                forward=100,
+                k0=100,
+                variance=0.04,
+                strike_count=20,
+                put_count=10,
+                call_count=10,
+                max_quote_age_seconds=age,
+            )
+
+        self.assertIsNone(asset_vix.max_term_quote_age_seconds([term(None)]))
+        self.assertEqual(
+            asset_vix.max_term_quote_age_seconds([term(None), term(90.0)]),
+            90.0,
+        )
 
     def test_choose_expirations_uses_vix_window(self):
         now = dt.datetime(2026, 1, 1, 16, 0, tzinfo=asset_vix.ET_ZONE)

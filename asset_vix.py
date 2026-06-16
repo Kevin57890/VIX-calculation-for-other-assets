@@ -9,6 +9,7 @@ single-term variance, and 30-day variance interpolation.
 from __future__ import annotations
 
 import argparse
+from collections import deque
 import csv
 import datetime as dt
 import json
@@ -116,9 +117,12 @@ def _to_unix_seconds(value: Any) -> Optional[int]:
     number = _to_float(value)
     if number is None:
         return None
-    if number > 10_000_000_000_000:
+    magnitude = abs(number)
+    if magnitude >= 100_000_000_000_000_000:
         number /= 1_000_000_000
-    elif number > 10_000_000_000:
+    elif magnitude >= 100_000_000_000_000:
+        number /= 1_000_000
+    elif magnitude >= 100_000_000_000:
         number /= 1_000
     return int(number)
 
@@ -682,6 +686,15 @@ def interpolate_variance(
     return interpolated
 
 
+def max_term_quote_age_seconds(terms: Sequence[TermVariance]) -> Optional[float]:
+    ages = [
+        term.max_quote_age_seconds
+        for term in terms
+        if term.max_quote_age_seconds is not None
+    ]
+    return max(ages) if ages else None
+
+
 def compute_asset_vix(
     symbol: str,
     token: str,
@@ -752,10 +765,7 @@ def compute_asset_vix(
             )
         )
 
-    max_age_seconds = max(
-        (term.max_quote_age_seconds or 0 for term in terms),
-        default=None,
-    )
+    max_age_seconds = max_term_quote_age_seconds(terms)
     stale_reason = ""
     if max_quote_age_minutes is not None and max_age_seconds is not None:
         if max_age_seconds > max_quote_age_minutes * 60:
@@ -904,8 +914,7 @@ def read_recent_csv_rows(path: str, limit: int = 50) -> List[Dict[str, str]]:
     if limit <= 0 or not os.path.exists(path):
         return []
     with open(path, "r", newline="", encoding="utf-8") as handle:
-        rows = list(csv.DictReader(handle))
-    return rows[-limit:]
+        return list(deque(csv.DictReader(handle), maxlen=limit))
 
 
 def print_rows(rows: Sequence[Dict[str, Any]], as_json: bool) -> None:

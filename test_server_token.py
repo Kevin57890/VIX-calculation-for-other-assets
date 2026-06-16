@@ -137,6 +137,62 @@ class ServerTokenTests(unittest.TestCase):
                 server.calc.compute_symbols = original_compute
                 server.RECORDS_PATH = original_records_path
 
+    def test_compute_rows_preserves_zero_overrides(self):
+        original_compute = server.calc.compute_symbols
+        original_records_path = server.RECORDS_PATH
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                server.RECORDS_PATH = Path(directory) / "records" / "calculations.csv"
+
+                def fake_compute(symbols, args):
+                    self.assertEqual(symbols, ["SPY"])
+                    self.assertIsNone(args.max_bid_ask_spread_pct)
+                    self.assertEqual(args.max_quote_age_minutes, 0)
+                    self.assertEqual(args.request_delay_seconds, 0)
+                    self.assertEqual(args.risk_free_rate, 0)
+                    self.assertFalse(args.allow_stale)
+                    self.assertTrue(args.allow_extrapolation)
+                    return [
+                        {
+                            "ts_utc": "2026-01-01T00:00:00+00:00",
+                            "symbol": "SPY",
+                            "status": "ok",
+                            "asset_vix_30d": 18.5,
+                        }
+                    ]
+
+                server.calc.compute_symbols = fake_compute
+                rows = server.compute_rows(
+                    {
+                        "symbols": "SPY",
+                        "maxBidAskSpreadPct": 0,
+                        "maxQuoteAgeMinutes": 0,
+                        "requestDelaySeconds": 0,
+                        "riskFreeRate": 0,
+                        "allowStale": "false",
+                        "allowExtrapolation": "true",
+                    },
+                    "valid-token-123456",
+                )
+                self.assertEqual(rows[0]["symbol"], "SPY")
+            finally:
+                server.calc.compute_symbols = original_compute
+                server.RECORDS_PATH = original_records_path
+
+    def test_compute_rows_rejects_invalid_numeric_payload(self):
+        with self.assertRaisesRegex(ValueError, "strikeLimit must be at least 1"):
+            server.compute_rows({"symbols": "SPY", "strikeLimit": 0}, "valid-token-123456")
+
+    def test_web_file_for_path_rejects_path_escape(self):
+        self.assertEqual(
+            server.web_file_for_path("/web/styles.css"),
+            (server.WEB_DIR / "styles.css").resolve(),
+        )
+        with self.assertRaises(PermissionError):
+            server.web_file_for_path("/web/../server.py")
+        with self.assertRaises(PermissionError):
+            server.web_file_for_path("/web/%2e%2e/server.py")
+
 
 if __name__ == "__main__":
     unittest.main()

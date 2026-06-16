@@ -208,16 +208,111 @@ def find_open_port(preferred: int) -> int:
     raise RuntimeError("No open local port found")
 
 
+def payload_value(payload: Dict[str, Any], key: str, default: Any) -> Any:
+    if key not in payload:
+        return default
+    value = payload[key]
+    if value is None:
+        return default
+    if isinstance(value, str) and value.strip() == "":
+        return default
+    return value
+
+
+def payload_int(
+    payload: Dict[str, Any],
+    key: str,
+    default: int,
+    minimum: Optional[int] = None,
+    maximum: Optional[int] = None,
+) -> int:
+    raw_value = payload_value(payload, key, default)
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{key} must be an integer") from exc
+    if minimum is not None and value < minimum:
+        raise ValueError(f"{key} must be at least {minimum}")
+    if maximum is not None and value > maximum:
+        raise ValueError(f"{key} must be at most {maximum}")
+    return value
+
+
+def payload_float(
+    payload: Dict[str, Any],
+    key: str,
+    default: Optional[float],
+    minimum: Optional[float] = None,
+    maximum: Optional[float] = None,
+) -> Optional[float]:
+    raw_value = payload_value(payload, key, default)
+    if raw_value is None:
+        return None
+    try:
+        value = float(raw_value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{key} must be a number") from exc
+    if minimum is not None and value < minimum:
+        raise ValueError(f"{key} must be at least {minimum:g}")
+    if maximum is not None and value > maximum:
+        raise ValueError(f"{key} must be at most {maximum:g}")
+    return value
+
+
+def payload_bool(payload: Dict[str, Any], key: str, default: bool) -> bool:
+    raw_value = payload_value(payload, key, default)
+    if isinstance(raw_value, bool):
+        return raw_value
+    if isinstance(raw_value, str):
+        value = raw_value.strip().lower()
+        if value in {"1", "true", "yes", "on"}:
+            return True
+        if value in {"0", "false", "no", "off"}:
+            return False
+    return bool(raw_value)
+
+
+def payload_choice(
+    payload: Dict[str, Any],
+    key: str,
+    default: str,
+    choices: set[str],
+) -> str:
+    value = str(payload_value(payload, key, default)).strip()
+    if value not in choices:
+        available = ", ".join(sorted(choices))
+        raise ValueError(f"{key} must be one of: {available}")
+    return value
+
+
+def web_file_for_path(request_path: str) -> Optional[Path]:
+    safe_path = urllib.parse.unquote(request_path).lstrip("/")
+    if not safe_path.startswith("web/"):
+        return None
+    target = (APP_DIR / safe_path).resolve()
+    try:
+        target.relative_to(WEB_DIR.resolve())
+    except ValueError as exc:
+        raise PermissionError("Forbidden path") from exc
+    return target
+
+
 class ReusableThreadingHTTPServer(ThreadingHTTPServer):
     allow_reuse_address = True
 
 
 def parse_json_body(handler: BaseHTTPRequestHandler) -> Dict[str, Any]:
-    length = int(handler.headers.get("Content-Length", "0"))
+    try:
+        length = int(handler.headers.get("Content-Length", "0"))
+    except ValueError as exc:
+        raise ValueError("Invalid Content-Length") from exc
     if length <= 0:
         return {}
     body = handler.rfile.read(length).decode("utf-8")
-    return json.loads(body or "{}")
+    try:
+        return json.loads(body or "{}")
+    except json.JSONDecodeError as exc:
+        raise ValueError("Request body must be valid JSON") from exc
 
 
 def default_args() -> argparse.Namespace:
@@ -247,29 +342,41 @@ def default_args() -> argparse.Namespace:
 def compute_rows(payload: Dict[str, Any], token: str) -> List[Dict[str, Any]]:
     args = default_args()
     args.token = token
-    args.mode = str(payload.get("mode") or args.mode)
-    args.fallback_mode = payload.get("fallbackMode") or None
-    args.maxage = str(payload.get("maxage") or args.maxage)
-    args.strike_limit = int(payload.get("strikeLimit") or args.strike_limit)
-    args.min_side_strikes = int(payload.get("minSideStrikes") or args.min_side_strikes)
-    args.max_bid_ask_spread_pct = float(
-        payload.get("maxBidAskSpreadPct") or args.max_bid_ask_spread_pct
+    args.mode = payload_choice(
+        payload, "mode", args.mode, {"cached", "delayed", "live"}
+    )
+    fallback_mode = payload_value(payload, "fallbackMode", None)
+    if fallback_mode is not None:
+        fallback_mode = payload_choice(
+            {"fallbackMode": fallback_mode},
+            "fallbackMode",
+            "",
+            {"delayed", "live"},
+        )
+    args.fallback_mode = fallback_mode
+    args.maxage = str(payload_value(payload, "maxage", args.maxage))
+    args.strike_limit = payload_int(payload, "strikeLimit", args.strike_limit, 1, 1000)
+    args.min_side_strikes = payload_int(
+        payload, "minSideStrikes", args.min_side_strikes, 1, 100
+    )
+    args.max_bid_ask_spread_pct = payload_float(
+        payload, "maxBidAskSpreadPct", args.max_bid_ask_spread_pct, 0
     )
     if args.max_bid_ask_spread_pct <= 0:
         args.max_bid_ask_spread_pct = None
-    args.max_quote_age_minutes = float(
-        payload.get("maxQuoteAgeMinutes") or args.max_quote_age_minutes
+    args.max_quote_age_minutes = payload_float(
+        payload, "maxQuoteAgeMinutes", args.max_quote_age_minutes, 0
     )
-    args.request_delay_seconds = float(
-        payload.get("requestDelaySeconds") or args.request_delay_seconds
+    args.request_delay_seconds = payload_float(
+        payload, "requestDelaySeconds", args.request_delay_seconds, 0, 60
     )
-    args.allow_stale = bool(payload.get("allowStale", args.allow_stale))
-    args.allow_extrapolation = bool(
-        payload.get("allowExtrapolation", args.allow_extrapolation)
+    args.allow_stale = payload_bool(payload, "allowStale", args.allow_stale)
+    args.allow_extrapolation = payload_bool(
+        payload, "allowExtrapolation", args.allow_extrapolation
     )
-    args.target_days = float(payload.get("targetDays") or args.target_days)
-    args.risk_free_rate = (
-        float(payload["riskFreeRate"]) if payload.get("riskFreeRate") else None
+    args.target_days = payload_float(payload, "targetDays", args.target_days, 0.1)
+    args.risk_free_rate = payload_float(
+        payload, "riskFreeRate", None, -1, 1
     )
 
     raw_symbols = str(payload.get("symbols") or "SPY")
@@ -296,7 +403,7 @@ class AssetVixHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(encoded)
 
-    def send_file(self, path: Path) -> None:
+    def send_file(self, path: Path, head_only: bool = False) -> None:
         if not path.exists() or not path.is_file():
             self.send_error(HTTPStatus.NOT_FOUND)
             return
@@ -307,7 +414,15 @@ class AssetVixHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(data)
+        if not head_only:
+            self.wfile.write(data)
+
+    def send_web_path(self, request_path: str, head_only: bool = False) -> bool:
+        target = web_file_for_path(request_path)
+        if target is None:
+            return False
+        self.send_file(target, head_only=head_only)
+        return True
 
     def send_records_csv(self, head_only: bool = False) -> None:
         if RECORDS_PATH.exists() and RECORDS_PATH.is_file():
@@ -356,16 +471,16 @@ class AssetVixHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/records.csv":
             self.send_records_csv(head_only=True)
             return
-        target = WEB_DIR / "index.html" if parsed.path in {"/", "/index.html"} else None
-        if target is None:
-            self.send_error(HTTPStatus.NOT_FOUND)
+        if parsed.path in {"/", "/index.html"}:
+            self.send_file(WEB_DIR / "index.html", head_only=True)
             return
-        data = target.read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html")
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
+        try:
+            if self.send_web_path(parsed.path, head_only=True):
+                return
+        except PermissionError:
+            self.send_error(HTTPStatus.FORBIDDEN)
+            return
+        self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
@@ -428,15 +543,13 @@ class AssetVixHandler(BaseHTTPRequestHandler):
             self.send_file(WEB_DIR / "index.html")
             return
 
-        safe_path = parsed.path.lstrip("/")
-        if not safe_path.startswith("web/"):
-            self.send_error(HTTPStatus.NOT_FOUND)
-            return
-        target = (APP_DIR / safe_path).resolve()
-        if not str(target).startswith(str(WEB_DIR.resolve())):
+        try:
+            if self.send_web_path(parsed.path):
+                return
+        except PermissionError:
             self.send_error(HTTPStatus.FORBIDDEN)
             return
-        self.send_file(target)
+        self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:
         try:
@@ -526,6 +639,8 @@ class AssetVixHandler(BaseHTTPRequestHandler):
                 return
 
             self.send_error(HTTPStatus.NOT_FOUND)
+        except ValueError as exc:
+            self.send_json({"ok": False, "error": str(exc)}, status=400)
         except Exception as exc:
             self.send_json({"ok": False, "error": str(exc)}, status=500)
 

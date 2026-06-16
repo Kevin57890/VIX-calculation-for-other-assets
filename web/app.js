@@ -83,7 +83,13 @@ async function api(path, payload) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  const data = await response.json();
+  const contentType = response.headers.get("content-type") || "";
+  let data;
+  if (contentType.includes("application/json")) {
+    data = await response.json();
+  } else {
+    data = { error: (await response.text()).trim() || "Request failed" };
+  }
   if (!response.ok || !data.ok) {
     throw new Error(data.error || "Request failed");
   }
