@@ -26,6 +26,7 @@ WEB_DIR = APP_DIR / "web"
 ENV_PATH = APP_DIR / ".env"
 RECORDS_PATH = APP_DIR / "records" / "calculations.csv"
 UNIVERSE_PATH = APP_DIR / "universes.csv"
+MAX_JSON_BODY_BYTES = 64 * 1024
 _ACTIVE_TOKEN: Optional[str] = None
 
 
@@ -186,11 +187,14 @@ def save_token(token: str, path: Path = ENV_PATH, activate: bool = True) -> str:
     cleaned = normalize_token(token)
     if len(cleaned) < 8:
         raise ValueError("Token looks too short")
-    path.write_text(f"MARKETDATA_TOKEN={cleaned}\n", encoding="utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = path.with_suffix(f"{path.suffix}.tmp")
+    temporary_path.write_text(f"MARKETDATA_TOKEN={cleaned}\n", encoding="utf-8")
     try:
-        path.chmod(0o600)
+        temporary_path.chmod(0o600)
     except OSError:
         pass
+    temporary_path.replace(path)
     if activate:
         _ACTIVE_TOKEN = cleaned
     return cleaned
@@ -269,6 +273,11 @@ def payload_bool(payload: Dict[str, Any], key: str, default: bool) -> bool:
             return True
         if value in {"0", "false", "no", "off"}:
             return False
+        raise ValueError(f"{key} must be a boolean")
+    if isinstance(raw_value, (int, float)):
+        if raw_value in {0, 1}:
+            return bool(raw_value)
+        raise ValueError(f"{key} must be a boolean")
     return bool(raw_value)
 
 
@@ -306,6 +315,8 @@ def parse_json_body(handler: BaseHTTPRequestHandler) -> Dict[str, Any]:
         length = int(handler.headers.get("Content-Length", "0"))
     except ValueError as exc:
         raise ValueError("Invalid Content-Length") from exc
+    if length > MAX_JSON_BODY_BYTES:
+        raise ValueError("Request body is too large")
     if length <= 0:
         return {}
     body = handler.rfile.read(length).decode("utf-8")
@@ -379,7 +390,7 @@ def compute_rows(payload: Dict[str, Any], token: str) -> List[Dict[str, Any]]:
         payload, "riskFreeRate", None, -1, 1
     )
 
-    raw_symbols = str(payload.get("symbols") or "SPY")
+    raw_symbols = "SPY" if "symbols" not in payload else str(payload["symbols"])
     symbols = calc.parse_symbols(raw_symbols)
     if not symbols:
         raise ValueError("Enter at least one symbol")

@@ -1,4 +1,5 @@
 import importlib.util
+import io
 import os
 from pathlib import Path
 import sys
@@ -62,6 +63,18 @@ class ServerTokenTests(unittest.TestCase):
             self.assertTrue(info["preview"].endswith("7890"))
         finally:
             path.unlink(missing_ok=True)
+
+    def test_save_token_creates_parent_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "nested" / ".env"
+            cleaned = server.save_token(
+                "nested-token-1234567890",
+                path=path,
+                activate=False,
+            )
+            self.assertEqual(cleaned, "nested-token-1234567890")
+            self.assertEqual(server.read_dotenv_token(path), "nested-token-1234567890")
+            self.assertFalse(path.with_suffix(f"{path.suffix}.tmp").exists())
 
     def test_normalize_common_token_paste_formats(self):
         cases = {
@@ -182,6 +195,26 @@ class ServerTokenTests(unittest.TestCase):
     def test_compute_rows_rejects_invalid_numeric_payload(self):
         with self.assertRaisesRegex(ValueError, "strikeLimit must be at least 1"):
             server.compute_rows({"symbols": "SPY", "strikeLimit": 0}, "valid-token-123456")
+
+    def test_compute_rows_rejects_empty_symbol_payload(self):
+        with self.assertRaisesRegex(ValueError, "Enter at least one symbol"):
+            server.compute_rows({"symbols": "  , ;  "}, "valid-token-123456")
+
+    def test_payload_bool_rejects_ambiguous_values(self):
+        self.assertFalse(server.payload_bool({"flag": 0}, "flag", True))
+        self.assertTrue(server.payload_bool({"flag": 1}, "flag", False))
+        with self.assertRaisesRegex(ValueError, "flag must be a boolean"):
+            server.payload_bool({"flag": "maybe"}, "flag", False)
+        with self.assertRaisesRegex(ValueError, "flag must be a boolean"):
+            server.payload_bool({"flag": 2}, "flag", False)
+
+    def test_parse_json_body_rejects_large_payloads(self):
+        class FakeHandler:
+            headers = {"Content-Length": str(server.MAX_JSON_BODY_BYTES + 1)}
+            rfile = io.BytesIO(b"")
+
+        with self.assertRaisesRegex(ValueError, "Request body is too large"):
+            server.parse_json_body(FakeHandler())
 
     def test_web_file_for_path_rejects_path_escape(self):
         self.assertEqual(
