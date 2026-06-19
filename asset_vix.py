@@ -44,6 +44,8 @@ DEFAULT_RECORDS_PATH = os.path.join(APP_DIR, "records", "calculations.csv")
 ET_ZONE = ZoneInfo("America/New_York") if ZoneInfo else dt.timezone.utc
 UTC = dt.timezone.utc
 MINUTES_IN_YEAR = 365 * 24 * 60
+MAX_SYMBOL_LENGTH = 16
+SYMBOL_PATTERN = re.compile(r"^[A-Z][A-Z0-9]*(?:[.-][A-Z0-9]+)*$")
 _TREASURY_CURVE_CACHE: Dict[dt.date, Tuple[str, Dict[float, float]]] = {}
 
 
@@ -125,6 +127,36 @@ def _to_unix_seconds(value: Any) -> Optional[int]:
     elif magnitude >= 100_000_000_000:
         number /= 1_000
     return int(number)
+
+
+def normalize_symbol(value: Any) -> str:
+    symbol = str(value or "").strip().upper()
+    if symbol.startswith("$"):
+        symbol = symbol[1:]
+    return symbol
+
+
+def symbol_format_error(symbol: str) -> str:
+    if not symbol:
+        return "symbol is empty"
+    if len(symbol) > MAX_SYMBOL_LENGTH:
+        return f"symbol is longer than {MAX_SYMBOL_LENGTH} characters"
+    if not SYMBOL_PATTERN.fullmatch(symbol):
+        return "use letters, digits, periods, or hyphens with no path characters"
+    return ""
+
+
+def validate_symbol(value: Any) -> str:
+    symbol = normalize_symbol(value)
+    reason = symbol_format_error(symbol)
+    if reason:
+        display = re.sub(r"\s+", " ", str(value or "").strip())[:40] or "(empty)"
+        raise AssetVixError(f"Invalid symbol '{display}': {reason}")
+    return symbol
+
+
+def marketdata_symbol_path(value: Any) -> str:
+    return urllib.parse.quote(validate_symbol(value), safe="")
 
 
 def read_dotenv_value(path: str, key: str) -> Optional[str]:
@@ -241,7 +273,8 @@ def marketdata_get(
 
 def get_expirations(symbol: str, token: str, mode: Optional[str]) -> List[str]:
     params = {"mode": mode} if mode else {}
-    payload, _ = marketdata_get(f"/options/expirations/{symbol}/", params, token)
+    symbol_path = marketdata_symbol_path(symbol)
+    payload, _ = marketdata_get(f"/options/expirations/{symbol_path}/", params, token)
     expirations = payload.get("expirations")
     if not isinstance(expirations, list) or not expirations:
         raise AssetVixError("No option expirations returned")
@@ -260,6 +293,7 @@ def get_chain(
     fallback_mode: Optional[str],
     max_bid_ask_spread_pct: Optional[float],
 ) -> Tuple[List[OptionQuote], int]:
+    symbol_path = marketdata_symbol_path(symbol)
     params = {
         "expiration": expiration,
         "mode": mode,
@@ -272,14 +306,16 @@ def get_chain(
 
     try:
         payload, status = marketdata_get(
-            f"/options/chain/{symbol}/", params, token
+            f"/options/chain/{symbol_path}/", params, token
         )
     except MarketDataNoContent:
         if not fallback_mode:
             raise
         params["mode"] = fallback_mode
         params["maxage"] = None
-        payload, status = marketdata_get(f"/options/chain/{symbol}/", params, token)
+        payload, status = marketdata_get(
+            f"/options/chain/{symbol_path}/", params, token
+        )
 
     return chain_payload_to_quotes(payload, max_bid_ask_spread_pct), status
 
@@ -716,6 +752,7 @@ def compute_asset_vix(
     manual_rate: Optional[float],
     max_bid_ask_spread_pct: Optional[float],
 ) -> Dict[str, Any]:
+    symbol = validate_symbol(symbol)
     now_et = dt.datetime.now(ET_ZONE)
     expirations = get_expirations(symbol, token, mode=None)
     selected_expirations = choose_expirations(
@@ -808,6 +845,7 @@ def compute_asset_vix(
 
 
 def compute_symbol_safe(symbol: str, args: argparse.Namespace) -> Dict[str, Any]:
+    row_symbol = normalize_symbol(symbol)
     try:
         return compute_asset_vix(
             symbol=symbol,
@@ -833,7 +871,7 @@ def compute_symbol_safe(symbol: str, args: argparse.Namespace) -> Dict[str, Any]
     except Exception as exc:  # Keep batch runs alive per symbol.
         return {
             "ts_utc": dt.datetime.now(UTC).isoformat(timespec="seconds"),
-            "symbol": symbol,
+            "symbol": row_symbol,
             "status": "error",
             "asset_vix_30d": None,
             "variance_30d": None,
@@ -948,7 +986,7 @@ def print_rows(rows: Sequence[Dict[str, Any]], as_json: bool) -> None:
 
 
 def parse_symbols(value: str) -> List[str]:
-    symbols = [part.strip().upper() for part in re.split(r"[,;\s]+", value or "")]
+    symbols = [normalize_symbol(part) for part in re.split(r"[,;\s]+", value or "")]
     return dedupe_symbols(symbols)
 
 
@@ -956,8 +994,11 @@ def dedupe_symbols(symbols: Iterable[str]) -> List[str]:
     seen = set()
     result = []
     for symbol in symbols:
-        cleaned = symbol.strip().upper()
-        if not cleaned or cleaned in seen:
+        cleaned = normalize_symbol(symbol)
+        if not cleaned:
+            continue
+        cleaned = validate_symbol(cleaned)
+        if cleaned in seen:
             continue
         seen.add(cleaned)
         result.append(cleaned)
