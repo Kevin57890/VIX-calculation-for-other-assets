@@ -28,6 +28,7 @@ RECORDS_PATH = APP_DIR / "records" / "calculations.csv"
 UNIVERSE_PATH = APP_DIR / "universes.csv"
 MAX_JSON_BODY_BYTES = 64 * 1024
 _ACTIVE_TOKEN: Optional[str] = None
+LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 
 def mask_token(token: Optional[str]) -> str:
@@ -212,6 +213,33 @@ def find_open_port(preferred: int) -> int:
     raise RuntimeError("No open local port found")
 
 
+def request_host_name(value: Optional[str]) -> str:
+    host = (value or "").strip().lower()
+    if not host:
+        return ""
+    if host.startswith("[") and "]" in host:
+        return host[1 : host.index("]")]
+    if host.count(":") > 1:
+        return host
+    return host.split(":", 1)[0]
+
+
+def is_loopback_host(value: Optional[str]) -> bool:
+    if not value or not value.strip():
+        return True
+    host = request_host_name(value)
+    return host in LOOPBACK_HOSTS
+
+
+def is_loopback_url(value: Optional[str]) -> bool:
+    if not value:
+        return True
+    parsed = urllib.parse.urlparse(value)
+    if parsed.scheme not in {"http", "https"}:
+        return False
+    return is_loopback_host(parsed.netloc)
+
+
 def payload_value(payload: Dict[str, Any], key: str, default: Any) -> Any:
     if key not in payload:
         return default
@@ -391,7 +419,10 @@ def compute_rows(payload: Dict[str, Any], token: str) -> List[Dict[str, Any]]:
     )
 
     raw_symbols = "SPY" if "symbols" not in payload else str(payload["symbols"])
-    symbols = calc.parse_symbols(raw_symbols)
+    try:
+        symbols = calc.parse_symbols(raw_symbols)
+    except calc.AssetVixError as exc:
+        raise ValueError(str(exc)) from exc
     if not symbols:
         raise ValueError("Enter at least one symbol")
 
@@ -411,6 +442,8 @@ class AssetVixHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(encoded)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
         self.end_headers()
         self.wfile.write(encoded)
 
@@ -424,6 +457,8 @@ class AssetVixHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
         self.end_headers()
         if not head_only:
             self.wfile.write(data)
@@ -473,11 +508,30 @@ class AssetVixHandler(BaseHTTPRequestHandler):
         )
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
         self.end_headers()
         if not head_only:
             self.wfile.write(data)
 
+    def reject_unsafe_request(self, check_origin: bool = False) -> bool:
+        if not is_loopback_host(self.headers.get("Host")):
+            self.send_error(HTTPStatus.FORBIDDEN, "Forbidden host")
+            return True
+        if check_origin:
+            origin = self.headers.get("Origin")
+            referer = self.headers.get("Referer")
+            if not is_loopback_url(origin) or not is_loopback_url(referer):
+                self.send_json(
+                    {"ok": False, "error": "Forbidden request origin"},
+                    status=HTTPStatus.FORBIDDEN,
+                )
+                return True
+        return False
+
     def do_HEAD(self) -> None:
+        if self.reject_unsafe_request():
+            return
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/api/records.csv":
             self.send_records_csv(head_only=True)
@@ -494,6 +548,8 @@ class AssetVixHandler(BaseHTTPRequestHandler):
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_GET(self) -> None:
+        if self.reject_unsafe_request():
+            return
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/api/status":
             token_info = get_token_info()
@@ -563,6 +619,8 @@ class AssetVixHandler(BaseHTTPRequestHandler):
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:
+        if self.reject_unsafe_request(check_origin=True):
+            return
         try:
             payload = parse_json_body(self)
             if self.path == "/api/token/test":

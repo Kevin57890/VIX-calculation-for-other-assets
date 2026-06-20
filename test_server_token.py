@@ -196,6 +196,10 @@ class ServerTokenTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "strikeLimit must be at least 1"):
             server.compute_rows({"symbols": "SPY", "strikeLimit": 0}, "valid-token-123456")
 
+    def test_compute_rows_rejects_invalid_symbol_as_bad_request_error(self):
+        with self.assertRaisesRegex(ValueError, "Invalid symbol"):
+            server.compute_rows({"symbols": "SPY/../AAPL"}, "valid-token-123456")
+
     def test_compute_rows_rejects_empty_symbol_payload(self):
         with self.assertRaisesRegex(ValueError, "Enter at least one symbol"):
             server.compute_rows({"symbols": "  , ;  "}, "valid-token-123456")
@@ -225,6 +229,21 @@ class ServerTokenTests(unittest.TestCase):
             server.web_file_for_path("/web/../server.py")
         with self.assertRaises(PermissionError):
             server.web_file_for_path("/web/%2e%2e/server.py")
+
+    def test_loopback_request_boundary_checks(self):
+        self.assertTrue(server.is_loopback_host(""))
+        self.assertTrue(server.is_loopback_host("127.0.0.1:8765"))
+        self.assertTrue(server.is_loopback_host("localhost"))
+        self.assertTrue(server.is_loopback_host("[::1]:8765"))
+        self.assertTrue(server.is_loopback_host("::1"))
+        self.assertFalse(server.is_loopback_host("example.com"))
+        self.assertFalse(server.is_loopback_host(":8765"))
+
+        self.assertTrue(server.is_loopback_url(None))
+        self.assertTrue(server.is_loopback_url("http://127.0.0.1:8765/"))
+        self.assertTrue(server.is_loopback_url("http://localhost:8765/web/index.html"))
+        self.assertFalse(server.is_loopback_url("https://example.com/"))
+        self.assertFalse(server.is_loopback_url("null"))
 
 
 if __name__ == "__main__":
