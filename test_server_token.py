@@ -75,6 +75,14 @@ class ServerTokenTests(unittest.TestCase):
             self.assertEqual(cleaned, "nested-token-1234567890")
             self.assertEqual(server.read_dotenv_token(path), "nested-token-1234567890")
             self.assertFalse(path.with_suffix(f"{path.suffix}.tmp").exists())
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
+    def test_save_token_rejects_invalid_token_format(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".env"
+            with self.assertRaisesRegex(ValueError, "invalid characters"):
+                server.save_token("bad,token-123456", path=path, activate=False)
+            self.assertFalse(path.exists())
 
     def test_normalize_common_token_paste_formats(self):
         cases = {

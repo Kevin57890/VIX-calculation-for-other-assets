@@ -186,16 +186,25 @@ def test_marketdata_token(token: str) -> Dict[str, Any]:
 def save_token(token: str, path: Path = ENV_PATH, activate: bool = True) -> str:
     global _ACTIVE_TOKEN
     cleaned = normalize_token(token)
-    if len(cleaned) < 8:
-        raise ValueError("Token looks too short")
+    format_error = token_format_error(cleaned)
+    if format_error:
+        raise ValueError(format_error)
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path = path.with_suffix(f"{path.suffix}.tmp")
-    temporary_path.write_text(f"MARKETDATA_TOKEN={cleaned}\n", encoding="utf-8")
+    temporary_path = path.with_name(
+        f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp"
+    )
     try:
-        temporary_path.chmod(0o600)
-    except OSError:
-        pass
-    temporary_path.replace(path)
+        fd = os.open(
+            temporary_path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(f"MARKETDATA_TOKEN={cleaned}\n")
+        temporary_path.replace(path)
+    except Exception:
+        temporary_path.unlink(missing_ok=True)
+        raise
     if activate:
         _ACTIVE_TOKEN = cleaned
     return cleaned
