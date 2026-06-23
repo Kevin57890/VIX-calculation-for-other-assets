@@ -46,6 +46,8 @@ UTC = dt.timezone.utc
 MINUTES_IN_YEAR = 365 * 24 * 60
 MAX_SYMBOL_LENGTH = 16
 SYMBOL_PATTERN = re.compile(r"^[A-Z][A-Z0-9]*(?:[.-][A-Z0-9]+)*$")
+CSV_FORMULA_PREFIXES = ("=", "+", "-", "@")
+CSV_CONTROL_PREFIXES = ("\t", "\r")
 _TREASURY_CURVE_CACHE: Dict[dt.date, Tuple[str, Dict[float, float]]] = {}
 
 
@@ -892,15 +894,31 @@ def compute_symbol_safe(symbol: str, args: argparse.Namespace) -> Dict[str, Any]
         }
 
 
+def csv_safe_value(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    stripped = value.lstrip()
+    if value.startswith(CSV_CONTROL_PREFIXES):
+        return f"'{value}"
+    if stripped.startswith(CSV_FORMULA_PREFIXES):
+        return f"'{value}"
+    return value
+
+
+def csv_safe_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    return {key: csv_safe_value(value) for key, value in row.items()}
+
+
 def write_csv_rows(path: str, rows: Sequence[Dict[str, Any]]) -> None:
     if not rows:
         return
+    safe_rows = [csv_safe_row(row) for row in rows]
     directory = os.path.dirname(os.path.abspath(path))
     if directory:
         os.makedirs(directory, exist_ok=True)
     exists = os.path.exists(path)
     has_content = exists and os.path.getsize(path) > 0
-    fieldnames = list(rows[0].keys())
+    fieldnames = list(safe_rows[0].keys())
     if has_content:
         with open(path, "r", newline="", encoding="utf-8") as handle:
             reader = csv.DictReader(handle)
@@ -914,13 +932,13 @@ def write_csv_rows(path: str, rows: Sequence[Dict[str, Any]]) -> None:
             with open(path, "w", newline="", encoding="utf-8") as handle:
                 writer = csv.DictWriter(handle, fieldnames=merged)
                 writer.writeheader()
-                writer.writerows(old_rows)
+                writer.writerows(csv_safe_row(row) for row in old_rows)
             fieldnames = merged
     with open(path, "a", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         if not has_content:
             writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows(safe_rows)
 
 
 def record_rows(

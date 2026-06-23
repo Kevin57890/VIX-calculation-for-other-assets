@@ -161,6 +161,36 @@ class AssetVixTests(unittest.TestCase):
             self.assertEqual(recent[0]["symbol"], "QQQ")
             self.assertEqual(recent[0]["run_id"], "run123")
 
+    def test_write_csv_rows_escapes_spreadsheet_formula_values(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "records.csv")
+            rows = [
+                {
+                    "symbol": "SPY",
+                    "status": "ok",
+                    "reason": "=HYPERLINK(\"https://example.com\")",
+                },
+                {
+                    "symbol": "QQQ",
+                    "status": "ok",
+                    "reason": "  +SUM(1,2)",
+                },
+                {
+                    "symbol": "IWM",
+                    "status": "ok",
+                    "reason": "\t@cmd",
+                },
+            ]
+
+            asset_vix.write_csv_rows(path, rows)
+            recent = asset_vix.read_recent_csv_rows(path, limit=3)
+            self.assertEqual(
+                recent[0]["reason"],
+                "'=HYPERLINK(\"https://example.com\")",
+            )
+            self.assertEqual(recent[1]["reason"], "'  +SUM(1,2)")
+            self.assertEqual(recent[2]["reason"], "'\t@cmd")
+
     def test_synthetic_black_scholes_chain_produces_reasonable_vix(self):
         now = dt.datetime.now(asset_vix.ET_ZONE)
         expiry_dt = now + dt.timedelta(days=30)
