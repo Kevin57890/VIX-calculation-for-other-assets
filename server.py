@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import csv
+import io
 import json
 import mimetypes
 import os
@@ -29,6 +31,30 @@ UNIVERSE_PATH = APP_DIR / "universes.csv"
 MAX_JSON_BODY_BYTES = 64 * 1024
 _ACTIVE_TOKEN: Optional[str] = None
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+RECORD_HEADERS = [
+    "recorded_at_utc",
+    "run_id",
+    "source",
+    "ts_utc",
+    "symbol",
+    "status",
+    "asset_vix_30d",
+    "variance_30d",
+    "target_days",
+    "rate_source",
+    "mode",
+    "http_statuses",
+    "expirations",
+    "days",
+    "rates",
+    "forwards",
+    "k0",
+    "strike_counts",
+    "put_counts",
+    "call_counts",
+    "max_quote_age_minutes",
+    "reason",
+]
 
 
 def mask_token(token: Optional[str]) -> str:
@@ -439,6 +465,30 @@ def compute_rows(payload: Dict[str, Any], token: str) -> List[Dict[str, Any]]:
     return calc.record_rows(str(RECORDS_PATH), rows, source="web")
 
 
+def records_csv_bytes(path: Path = RECORDS_PATH) -> bytes:
+    output = io.StringIO()
+    if path.exists() and path.is_file():
+        with path.open("r", newline="", encoding="utf-8") as handle:
+            reader = csv.DictReader(handle)
+            fieldnames = reader.fieldnames or RECORD_HEADERS
+            writer = csv.DictWriter(
+                output,
+                fieldnames=fieldnames,
+                extrasaction="ignore",
+                lineterminator="\n",
+            )
+            writer.writeheader()
+            writer.writerows(calc.csv_safe_row(row) for row in reader)
+    else:
+        writer = csv.DictWriter(
+            output,
+            fieldnames=RECORD_HEADERS,
+            lineterminator="\n",
+        )
+        writer.writeheader()
+    return output.getvalue().encode("utf-8")
+
+
 class AssetVixHandler(BaseHTTPRequestHandler):
     server_version = "AssetVIXLocal/0.1"
 
@@ -480,34 +530,7 @@ class AssetVixHandler(BaseHTTPRequestHandler):
         return True
 
     def send_records_csv(self, head_only: bool = False) -> None:
-        if RECORDS_PATH.exists() and RECORDS_PATH.is_file():
-            data = RECORDS_PATH.read_bytes()
-        else:
-            headers = [
-                "recorded_at_utc",
-                "run_id",
-                "source",
-                "ts_utc",
-                "symbol",
-                "status",
-                "asset_vix_30d",
-                "variance_30d",
-                "target_days",
-                "rate_source",
-                "mode",
-                "http_statuses",
-                "expirations",
-                "days",
-                "rates",
-                "forwards",
-                "k0",
-                "strike_counts",
-                "put_counts",
-                "call_counts",
-                "max_quote_age_minutes",
-                "reason",
-            ]
-            data = (",".join(headers) + "\n").encode("utf-8")
+        data = records_csv_bytes(RECORDS_PATH)
 
         self.send_response(200)
         self.send_header("Content-Type", "text/csv; charset=utf-8")

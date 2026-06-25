@@ -1,3 +1,4 @@
+import csv
 import importlib.util
 import io
 import os
@@ -199,6 +200,30 @@ class ServerTokenTests(unittest.TestCase):
             finally:
                 server.calc.compute_symbols = original_compute
                 server.RECORDS_PATH = original_records_path
+
+    def test_records_csv_bytes_escapes_existing_formula_values(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "calculations.csv"
+            path.write_text(
+                "symbol,status,reason\n"
+                "SPY,ok,=HYPERLINK(\"https://example.com\")\n"
+                "QQQ,ok,\t@cmd\n",
+                encoding="utf-8",
+            )
+
+            data = server.records_csv_bytes(path).decode("utf-8")
+            rows = list(csv.DictReader(io.StringIO(data)))
+            self.assertEqual(
+                rows[0]["reason"],
+                "'=HYPERLINK(\"https://example.com\")",
+            )
+            self.assertEqual(rows[1]["reason"], "'\t@cmd")
+
+    def test_records_csv_bytes_returns_headers_without_records_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "missing.csv"
+            data = server.records_csv_bytes(path).decode("utf-8")
+            self.assertEqual(data.splitlines()[0], ",".join(server.RECORD_HEADERS))
 
     def test_compute_rows_rejects_invalid_numeric_payload(self):
         with self.assertRaisesRegex(ValueError, "strikeLimit must be at least 1"):
