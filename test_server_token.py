@@ -225,6 +225,34 @@ class ServerTokenTests(unittest.TestCase):
             data = server.records_csv_bytes(path).decode("utf-8")
             self.assertEqual(data.splitlines()[0], ",".join(server.RECORD_HEADERS))
 
+    def test_universes_payload_returns_ordered_universes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "universes.csv"
+            path.write_text(
+                "symbol,groups,tier,active\n"
+                "SPY,core|etfs,tier1,true\n"
+                "AAPL,core|mega_cap,tier1,true\n",
+                encoding="utf-8",
+            )
+
+            payload = server.universes_payload(path)
+            names = [item["name"] for item in payload["universes"]]
+            self.assertEqual(names[:3], ["core", "etfs", "mega_cap"])
+            self.assertEqual(payload["universes"][0]["symbols"], ["SPY", "AAPL"])
+
+    def test_universes_payload_reports_invalid_symbols(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "universes.csv"
+            path.write_text(
+                "symbol,groups,tier,active\n"
+                "SPY,core,tier1,true\n"
+                "BAD/../SYM,core,tier1,true\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "Invalid symbol"):
+                server.universes_payload(path)
+
     def test_compute_rows_rejects_invalid_numeric_payload(self):
         with self.assertRaisesRegex(ValueError, "strikeLimit must be at least 1"):
             server.compute_rows({"symbols": "SPY", "strikeLimit": 0}, "valid-token-123456")

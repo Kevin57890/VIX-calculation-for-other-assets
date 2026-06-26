@@ -489,6 +489,28 @@ def records_csv_bytes(path: Path = RECORDS_PATH) -> bytes:
     return output.getvalue().encode("utf-8")
 
 
+def universes_payload(path: Path = UNIVERSE_PATH) -> Dict[str, Any]:
+    try:
+        universes = calc.load_symbol_universes(str(path))
+    except calc.AssetVixError as exc:
+        raise ValueError(str(exc)) from exc
+
+    preferred = ["core", "etfs", "mega_cap", "semis", "liquid50", "liquid100"]
+    names = [name for name in preferred if name in universes]
+    names.extend(name for name in sorted(universes) if name not in set(names))
+    return {
+        "ok": True,
+        "universes": [
+            {
+                "name": name,
+                "count": len(universes[name]),
+                "symbols": universes[name],
+            }
+            for name in names
+        ],
+    }
+
+
 class AssetVixHandler(BaseHTTPRequestHandler):
     server_version = "AssetVIXLocal/0.1"
 
@@ -619,23 +641,10 @@ class AssetVixHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/api/universes":
-            universes = calc.load_symbol_universes(str(UNIVERSE_PATH))
-            preferred = ["core", "etfs", "mega_cap", "semis", "liquid50", "liquid100"]
-            names = [name for name in preferred if name in universes]
-            names.extend(name for name in sorted(universes) if name not in set(names))
-            self.send_json(
-                {
-                    "ok": True,
-                    "universes": [
-                        {
-                            "name": name,
-                            "count": len(universes[name]),
-                            "symbols": universes[name],
-                        }
-                        for name in names
-                    ],
-                }
-            )
+            try:
+                self.send_json(universes_payload(UNIVERSE_PATH))
+            except ValueError as exc:
+                self.send_json({"ok": False, "error": str(exc)}, status=400)
             return
 
         if parsed.path in {"/", "/index.html"}:
