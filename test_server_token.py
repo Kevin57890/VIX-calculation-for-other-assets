@@ -281,6 +281,30 @@ class ServerTokenTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Request body is too large"):
             server.parse_json_body(FakeHandler())
 
+    def test_parse_json_body_rejects_invalid_lengths_and_payload_shapes(self):
+        class FakeHandler:
+            def __init__(self, length, body):
+                self.headers = {"Content-Length": str(length)}
+                self.rfile = io.BytesIO(body)
+
+        cases = [
+            (-1, b"", "Invalid Content-Length"),
+            (8, b'{"ok":1', "ended before Content-Length"),
+            (1, b"\xff", "must be UTF-8"),
+            (2, b"[]", "must be a JSON object"),
+        ]
+        for length, body, message in cases:
+            with self.subTest(message=message):
+                with self.assertRaisesRegex(ValueError, message):
+                    server.parse_json_body(FakeHandler(length, body))
+
+    def test_parse_json_body_accepts_json_object(self):
+        class FakeHandler:
+            headers = {"Content-Length": "11"}
+            rfile = io.BytesIO(b'{"ok":true}')
+
+        self.assertEqual(server.parse_json_body(FakeHandler()), {"ok": True})
+
     def test_web_file_for_path_rejects_path_escape(self):
         self.assertEqual(
             server.web_file_for_path("/web/styles.css"),

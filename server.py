@@ -378,15 +378,26 @@ def parse_json_body(handler: BaseHTTPRequestHandler) -> Dict[str, Any]:
         length = int(handler.headers.get("Content-Length", "0"))
     except ValueError as exc:
         raise ValueError("Invalid Content-Length") from exc
+    if length < 0:
+        raise ValueError("Invalid Content-Length")
     if length > MAX_JSON_BODY_BYTES:
         raise ValueError("Request body is too large")
-    if length <= 0:
+    if length == 0:
         return {}
-    body = handler.rfile.read(length).decode("utf-8")
+    raw_body = handler.rfile.read(length)
+    if len(raw_body) != length:
+        raise ValueError("Request body ended before Content-Length")
     try:
-        return json.loads(body or "{}")
+        body = raw_body.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("Request body must be UTF-8") from exc
+    try:
+        payload = json.loads(body or "{}")
     except json.JSONDecodeError as exc:
         raise ValueError("Request body must be valid JSON") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("Request body must be a JSON object")
+    return payload
 
 
 def default_args() -> argparse.Namespace:
