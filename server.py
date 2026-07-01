@@ -7,6 +7,7 @@ import argparse
 import csv
 import io
 import json
+import math
 import mimetypes
 import os
 import re
@@ -319,6 +320,8 @@ def payload_float(
         value = float(raw_value)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{key} must be a number") from exc
+    if not math.isfinite(value):
+        raise ValueError(f"{key} must be a finite number")
     if minimum is not None and value < minimum:
         raise ValueError(f"{key} must be at least {minimum:g}")
     if maximum is not None and value > maximum:

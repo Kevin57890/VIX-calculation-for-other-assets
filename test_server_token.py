@@ -273,6 +273,12 @@ class ServerTokenTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "flag must be a boolean"):
             server.payload_bool({"flag": 2}, "flag", False)
 
+    def test_payload_float_rejects_non_finite_values(self):
+        for value in ["NaN", "Infinity", "-Infinity"]:
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "must be a finite number"):
+                    server.payload_float({"value": value}, "value", 1.0)
+
     def test_parse_json_body_rejects_large_payloads(self):
         class FakeHandler:
             headers = {"Content-Length": str(server.MAX_JSON_BODY_BYTES + 1)}
