@@ -13,6 +13,18 @@ prototyping rather than for publishing an official index.
 > AssetVIX is not the official Cboe VIX. The official VIX is a proprietary Cboe
 > index based on specific SPX/SPXW option inputs and index-governance rules.
 
+## Project Status
+
+AssetVIX is a local-first research tool. The repository is intended to be usable
+from a fresh clone: it includes the local web app, CLI, preset symbol universes,
+unit tests, contribution notes, security guidance, and a changelog.
+
+Maintenance files:
+
+- [Contributing guide](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
+- [Changelog](CHANGELOG.md)
+
 ## Highlights
 
 - Local browser-based UI
