@@ -1,5 +1,9 @@
 # AssetVIX
 
+[![CI](https://github.com/Kevin57890/VIX-calculation-for-other-assets/actions/workflows/ci.yml/badge.svg)](https://github.com/Kevin57890/VIX-calculation-for-other-assets/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Kevin57890/VIX-calculation-for-other-assets)](https://github.com/Kevin57890/VIX-calculation-for-other-assets/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 AssetVIX is a local web application and command-line tool for calculating a
 VIX-style 30-day option-implied volatility value for optionable US equities and
 ETFs.
@@ -41,6 +45,8 @@ Maintenance files:
 - Per-symbol failure reasons instead of silently publishing bad values
 - Automatic local CSV records for every calculation
 - Browser time-series chart built from recorded AssetVIX points
+- Thread-safe in-process calculation history writes
+- Automated CI checks across supported Python versions
 
 ## Formula
 
@@ -176,6 +182,12 @@ an option-expiration endpoint before saving it.
 
 The token is stored locally in `.env`, which is ignored by Git.
 
+Check the installed project version with:
+
+```bash
+python3 asset_vix.py --version
+```
+
 ## Command-Line Usage
 
 Single-symbol test:
@@ -255,7 +267,8 @@ Useful groups include:
 - `liquid100`
 
 Edit `universes.csv` to add or remove symbols without changing application
-code.
+code. A single browser query accepts up to 100 unique symbols to prevent
+accidental long-running requests and unexpected API-credit usage.
 
 ## Web App Controls
 
@@ -355,6 +368,9 @@ Run the local unit tests:
 ```bash
 python3 -m unittest test_asset_vix.py test_server_token.py
 ```
+
+GitHub Actions runs the same suite plus source compilation on Python 3.9 and
+3.13 for every push to `main` and every pull request.
 
 ## License
 

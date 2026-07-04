@@ -265,6 +265,11 @@ class ServerTokenTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Enter at least one symbol"):
             server.compute_rows({"symbols": "  , ;  "}, "valid-token-123456")
 
+    def test_compute_rows_limits_unique_symbols_per_request(self):
+        symbols = ",".join(f"S{index}" for index in range(server.MAX_QUERY_SYMBOLS + 1))
+        with self.assertRaisesRegex(ValueError, "at most 100 unique symbols"):
+            server.compute_rows({"symbols": symbols}, "valid-token-123456")
+
     def test_payload_bool_rejects_ambiguous_values(self):
         self.assertFalse(server.payload_bool({"flag": 0}, "flag", True))
         self.assertTrue(server.payload_bool({"flag": 1}, "flag", False))
@@ -335,6 +340,21 @@ class ServerTokenTests(unittest.TestCase):
         self.assertTrue(server.is_loopback_url("http://localhost:8765/web/index.html"))
         self.assertFalse(server.is_loopback_url("https://example.com/"))
         self.assertFalse(server.is_loopback_url("null"))
+
+    def test_security_headers_are_added_to_every_response(self):
+        handler = object.__new__(server.AssetVixHandler)
+        handler.request_version = "HTTP/1.1"
+        handler._headers_buffer = []
+        handler.wfile = io.BytesIO()
+
+        handler.end_headers()
+
+        headers = handler.wfile.getvalue().decode("latin-1")
+        self.assertIn("Content-Security-Policy:", headers)
+        self.assertIn("Permissions-Policy:", headers)
+        self.assertIn("Referrer-Policy: no-referrer", headers)
+        self.assertIn("X-Content-Type-Options: nosniff", headers)
+        self.assertEqual(handler.version_string(), "AssetVIXLocal/1.0.0")
 
 
 if __name__ == "__main__":

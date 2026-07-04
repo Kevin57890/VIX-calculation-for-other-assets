@@ -17,6 +17,9 @@ python3 -m unittest test_asset_vix.py test_server_token.py
 The app has no required third-party Python packages. `requirements.txt` is
 intentionally empty for deployment tools that expect the file.
 
+GitHub Actions runs source compilation and the unit suite on Python 3.9 and
+3.13. Local changes should pass the same checks before they are pushed.
+
 ## Local App Checks
 
 Run the browser app locally:

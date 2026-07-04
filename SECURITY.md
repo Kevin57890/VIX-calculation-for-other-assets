@@ -40,3 +40,7 @@ the MarketData.app dashboard.
 The web app is designed to bind to `127.0.0.1`. Do not expose it directly to a
 public network. If you place the app behind another server, review Host, Origin,
 token storage, and records download behavior first.
+
+Local HTTP responses apply a restrictive Content Security Policy, deny framing,
+disable unnecessary browser permissions, and avoid returning internal exception
+details to the browser.

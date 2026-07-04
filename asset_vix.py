@@ -17,6 +17,7 @@ import math
 import os
 import re
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -33,6 +34,7 @@ except ImportError:  # pragma: no cover - Python 3.8 fallback is not expected he
 
 
 MARKETDATA_BASE = "https://api.marketdata.app/v1"
+VERSION = "1.0.0"
 TREASURY_XML = (
     "https://home.treasury.gov/resource-center/data-chart-center/"
     "interest-rates/pages/xml"
@@ -49,6 +51,7 @@ SYMBOL_PATTERN = re.compile(r"^[A-Z][A-Z0-9]*(?:[.-][A-Z0-9]+)*$")
 CSV_FORMULA_PREFIXES = ("=", "+", "-", "@")
 CSV_CONTROL_PREFIXES = ("\t", "\r")
 _TREASURY_CURVE_CACHE: Dict[dt.date, Tuple[str, Dict[float, float]]] = {}
+_CSV_LOCK = threading.RLock()
 
 
 class AssetVixError(Exception):
@@ -265,6 +268,8 @@ def marketdata_get(
         payload = json.loads(body)
     except json.JSONDecodeError as exc:
         raise AssetVixError("MarketData returned non-JSON content") from exc
+    if not isinstance(payload, dict):
+        raise AssetVixError("MarketData returned an unexpected JSON structure")
 
     if payload.get("s") == "error":
         raise AssetVixError(payload.get("errmsg", "MarketData returned an error"))
@@ -913,32 +918,33 @@ def write_csv_rows(path: str, rows: Sequence[Dict[str, Any]]) -> None:
     if not rows:
         return
     safe_rows = [csv_safe_row(row) for row in rows]
-    directory = os.path.dirname(os.path.abspath(path))
-    if directory:
-        os.makedirs(directory, exist_ok=True)
-    exists = os.path.exists(path)
-    has_content = exists and os.path.getsize(path) > 0
-    fieldnames = list(safe_rows[0].keys())
-    if has_content:
-        with open(path, "r", newline="", encoding="utf-8") as handle:
-            reader = csv.DictReader(handle)
-            existing_fieldnames = reader.fieldnames or []
-            old_rows = list(reader)
-        if existing_fieldnames and existing_fieldnames != fieldnames:
-            merged = list(existing_fieldnames)
-            for name in fieldnames:
-                if name not in merged:
-                    merged.append(name)
-            with open(path, "w", newline="", encoding="utf-8") as handle:
-                writer = csv.DictWriter(handle, fieldnames=merged)
+    with _CSV_LOCK:
+        directory = os.path.dirname(os.path.abspath(path))
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+        exists = os.path.exists(path)
+        has_content = exists and os.path.getsize(path) > 0
+        fieldnames = list(safe_rows[0].keys())
+        if has_content:
+            with open(path, "r", newline="", encoding="utf-8") as handle:
+                reader = csv.DictReader(handle)
+                existing_fieldnames = reader.fieldnames or []
+                old_rows = list(reader)
+            if existing_fieldnames and existing_fieldnames != fieldnames:
+                merged = list(existing_fieldnames)
+                for name in fieldnames:
+                    if name not in merged:
+                        merged.append(name)
+                with open(path, "w", newline="", encoding="utf-8") as handle:
+                    writer = csv.DictWriter(handle, fieldnames=merged)
+                    writer.writeheader()
+                    writer.writerows(csv_safe_row(row) for row in old_rows)
+                fieldnames = merged
+        with open(path, "a", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fieldnames)
+            if not has_content:
                 writer.writeheader()
-                writer.writerows(csv_safe_row(row) for row in old_rows)
-            fieldnames = merged
-    with open(path, "a", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames)
-        if not has_content:
-            writer.writeheader()
-        writer.writerows(safe_rows)
+            writer.writerows(safe_rows)
 
 
 def record_rows(
@@ -967,10 +973,22 @@ def record_rows(
 
 
 def read_recent_csv_rows(path: str, limit: int = 50) -> List[Dict[str, str]]:
-    if limit <= 0 or not os.path.exists(path):
+    if limit <= 0:
         return []
-    with open(path, "r", newline="", encoding="utf-8") as handle:
-        return list(deque(csv.DictReader(handle), maxlen=limit))
+    with _CSV_LOCK:
+        if not os.path.isfile(path):
+            return []
+        with open(path, "r", newline="", encoding="utf-8") as handle:
+            return list(deque(csv.DictReader(handle), maxlen=limit))
+
+
+def read_csv_rows(path: str) -> Tuple[List[str], List[Dict[str, str]]]:
+    with _CSV_LOCK:
+        if not os.path.isfile(path):
+            return [], []
+        with open(path, "r", newline="", encoding="utf-8") as handle:
+            reader = csv.DictReader(handle)
+            return list(reader.fieldnames or []), list(reader)
 
 
 def print_rows(rows: Sequence[Dict[str, Any]], as_json: bool) -> None:
@@ -1197,12 +1215,58 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run forever at --interval-seconds cadence.",
     )
     parser.add_argument("--interval-seconds", type=int, default=300)
+    parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     return parser
+
+
+def validate_cli_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    finite_values = {
+        "--target-days": args.target_days,
+        "--min-days": args.min_days,
+        "--max-days": args.max_days,
+        "--max-bid-ask-spread-pct": args.max_bid_ask_spread_pct,
+        "--max-quote-age-minutes": args.max_quote_age_minutes,
+        "--request-delay-seconds": args.request_delay_seconds,
+        "--risk-free-rate": args.risk_free_rate,
+    }
+    for option, value in finite_values.items():
+        if value is not None and not math.isfinite(value):
+            parser.error(f"{option} must be a finite number")
+
+    if args.target_days <= 0:
+        parser.error("--target-days must be greater than 0")
+    if args.min_days < 0:
+        parser.error("--min-days must be at least 0")
+    if args.max_days <= args.min_days:
+        parser.error("--max-days must be greater than --min-days")
+    if args.strike_limit is not None and args.strike_limit < 1:
+        parser.error("--strike-limit must be at least 1")
+    if args.min_open_interest is not None and args.min_open_interest < 0:
+        parser.error("--min-open-interest must be at least 0")
+    if args.min_volume is not None and args.min_volume < 0:
+        parser.error("--min-volume must be at least 0")
+    if args.min_side_strikes < 1:
+        parser.error("--min-side-strikes must be at least 1")
+    if args.max_quote_age_minutes is not None and args.max_quote_age_minutes < 0:
+        parser.error("--max-quote-age-minutes must be at least 0")
+    if args.request_delay_seconds < 0:
+        parser.error("--request-delay-seconds must be at least 0")
+    if args.max_symbols is not None and args.max_symbols < 1:
+        parser.error("--max-symbols must be at least 1")
+    if args.interval_seconds < 1:
+        parser.error("--interval-seconds must be at least 1")
+    if not 0 <= args.settlement_hour <= 23:
+        parser.error("--settlement-hour must be between 0 and 23")
+    if not 0 <= args.settlement_minute <= 59:
+        parser.error("--settlement-minute must be between 0 and 59")
+    if args.risk_free_rate is not None and not -1 <= args.risk_free_rate <= 1:
+        parser.error("--risk-free-rate must be between -1 and 1")
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    validate_cli_args(parser, args)
     if args.max_bid_ask_spread_pct is not None and args.max_bid_ask_spread_pct <= 0:
         args.max_bid_ask_spread_pct = None
     if not args.token:

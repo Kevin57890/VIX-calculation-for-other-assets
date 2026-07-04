@@ -30,6 +30,7 @@ ENV_PATH = APP_DIR / ".env"
 RECORDS_PATH = APP_DIR / "records" / "calculations.csv"
 UNIVERSE_PATH = APP_DIR / "universes.csv"
 MAX_JSON_BODY_BYTES = 64 * 1024
+MAX_QUERY_SYMBOLS = 100
 _ACTIVE_TOKEN: Optional[str] = None
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 RECORD_HEADERS = [
@@ -474,6 +475,10 @@ def compute_rows(payload: Dict[str, Any], token: str) -> List[Dict[str, Any]]:
         raise ValueError(str(exc)) from exc
     if not symbols:
         raise ValueError("Enter at least one symbol")
+    if len(symbols) > MAX_QUERY_SYMBOLS:
+        raise ValueError(
+            f"A query can include at most {MAX_QUERY_SYMBOLS} unique symbols"
+        )
 
     rows = calc.compute_symbols(symbols, args)
     return calc.record_rows(str(RECORDS_PATH), rows, source="web")
@@ -481,25 +486,15 @@ def compute_rows(payload: Dict[str, Any], token: str) -> List[Dict[str, Any]]:
 
 def records_csv_bytes(path: Path = RECORDS_PATH) -> bytes:
     output = io.StringIO()
-    if path.exists() and path.is_file():
-        with path.open("r", newline="", encoding="utf-8") as handle:
-            reader = csv.DictReader(handle)
-            fieldnames = reader.fieldnames or RECORD_HEADERS
-            writer = csv.DictWriter(
-                output,
-                fieldnames=fieldnames,
-                extrasaction="ignore",
-                lineterminator="\n",
-            )
-            writer.writeheader()
-            writer.writerows(calc.csv_safe_row(row) for row in reader)
-    else:
-        writer = csv.DictWriter(
-            output,
-            fieldnames=RECORD_HEADERS,
-            lineterminator="\n",
-        )
-        writer.writeheader()
+    fieldnames, rows = calc.read_csv_rows(str(path))
+    writer = csv.DictWriter(
+        output,
+        fieldnames=fieldnames or RECORD_HEADERS,
+        extrasaction="ignore",
+        lineterminator="\n",
+    )
+    writer.writeheader()
+    writer.writerows(calc.csv_safe_row(row) for row in rows)
     return output.getvalue().encode("utf-8")
 
 
@@ -526,19 +521,36 @@ def universes_payload(path: Path = UNIVERSE_PATH) -> Dict[str, Any]:
 
 
 class AssetVixHandler(BaseHTTPRequestHandler):
-    server_version = "AssetVIXLocal/0.1"
+    server_version = f"AssetVIXLocal/{calc.VERSION}"
+
+    def version_string(self) -> str:
+        return self.server_version
 
     def log_message(self, fmt: str, *args: Any) -> None:
         sys.stderr.write("[AssetVIX] " + fmt % args + "\n")
+
+    def end_headers(self) -> None:
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; "
+            "base-uri 'none'; form-action 'self'",
+        )
+        self.send_header(
+            "Permissions-Policy",
+            "camera=(), microphone=(), geolocation=()",
+        )
+        super().end_headers()
 
     def send_json(self, payload: Dict[str, Any], status: int = 200) -> None:
         encoded = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(encoded)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("X-Frame-Options", "DENY")
         self.end_headers()
         self.wfile.write(encoded)
 
@@ -551,9 +563,6 @@ class AssetVixHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("X-Frame-Options", "DENY")
         self.end_headers()
         if not head_only:
             self.wfile.write(data)
@@ -575,9 +584,6 @@ class AssetVixHandler(BaseHTTPRequestHandler):
             'attachment; filename="assetvix-records.csv"',
         )
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("X-Frame-Options", "DENY")
         self.end_headers()
         if not head_only:
             self.wfile.write(data)
@@ -624,6 +630,7 @@ class AssetVixHandler(BaseHTTPRequestHandler):
             self.send_json(
                 {
                     "ok": True,
+                    "version": calc.VERSION,
                     "tokenConfigured": bool(token_info["token"]),
                     "tokenSource": token_info["source"],
                     "tokenPreview": token_info["preview"],
@@ -766,7 +773,11 @@ class AssetVixHandler(BaseHTTPRequestHandler):
         except ValueError as exc:
             self.send_json({"ok": False, "error": str(exc)}, status=400)
         except Exception as exc:
-            self.send_json({"ok": False, "error": str(exc)}, status=500)
+            self.log_error("Unhandled request error: %s", exc)
+            self.send_json(
+                {"ok": False, "error": "Internal server error"},
+                status=500,
+            )
 
 
 def main() -> int:

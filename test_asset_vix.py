@@ -1,10 +1,13 @@
+import contextlib
 import datetime as dt
 import importlib.util
+import io
 import math
 import os
 from pathlib import Path
 import sys
 import tempfile
+import threading
 import unittest
 
 
@@ -31,6 +34,30 @@ def bs_price(spot, strike, years, rate, vol, side):
 
 
 class AssetVixTests(unittest.TestCase):
+    def test_marketdata_get_rejects_non_object_json(self):
+        class FakeResponse:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self):
+                return b"[]"
+
+        original = asset_vix.urllib.request.urlopen
+        try:
+            asset_vix.urllib.request.urlopen = lambda *_args, **_kwargs: FakeResponse()
+            with self.assertRaisesRegex(
+                asset_vix.AssetVixError,
+                "unexpected JSON structure",
+            ):
+                asset_vix.marketdata_get("/test/", {}, "valid-token")
+        finally:
+            asset_vix.urllib.request.urlopen = original
+
     def test_unix_timestamp_normalization_accepts_common_epoch_units(self):
         self.assertEqual(asset_vix._to_unix_seconds(1_700_000_000), 1_700_000_000)
         self.assertEqual(asset_vix._to_unix_seconds(1_700_000_000_000), 1_700_000_000)
@@ -190,6 +217,65 @@ class AssetVixTests(unittest.TestCase):
             )
             self.assertEqual(recent[1]["reason"], "'  +SUM(1,2)")
             self.assertEqual(recent[2]["reason"], "'\t@cmd")
+
+    def test_concurrent_csv_writes_preserve_every_row(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "records.csv")
+            thread_count = 8
+            rows_per_thread = 20
+            barrier = threading.Barrier(thread_count)
+            errors = []
+
+            def write_rows(thread_index):
+                try:
+                    barrier.wait()
+                    for row_index in range(rows_per_thread):
+                        asset_vix.write_csv_rows(
+                            path,
+                            [
+                                {
+                                    "symbol": f"T{thread_index}",
+                                    "sequence": row_index,
+                                }
+                            ],
+                        )
+                except Exception as exc:
+                    errors.append(exc)
+
+            threads = [
+                threading.Thread(target=write_rows, args=(index,))
+                for index in range(thread_count)
+            ]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+
+            self.assertEqual(errors, [])
+            fieldnames, rows = asset_vix.read_csv_rows(path)
+            self.assertEqual(fieldnames, ["symbol", "sequence"])
+            self.assertEqual(len(rows), thread_count * rows_per_thread)
+            self.assertEqual(
+                len({(row["symbol"], row["sequence"]) for row in rows}),
+                thread_count * rows_per_thread,
+            )
+
+    def test_cli_rejects_invalid_numeric_boundaries(self):
+        cases = [
+            (["--target-days", "nan"], "finite number"),
+            (["--max-days", "20", "--min-days", "20"], "greater than"),
+            (["--max-symbols", "0"], "at least 1"),
+            (["--settlement-hour", "24"], "between 0 and 23"),
+            (["--risk-free-rate", "1.1"], "between -1 and 1"),
+        ]
+        for options, message in cases:
+            with self.subTest(options=options):
+                stderr = io.StringIO()
+                with contextlib.redirect_stderr(stderr):
+                    with self.assertRaises(SystemExit) as raised:
+                        asset_vix.main(["--token", "valid-token-123", *options])
+                self.assertEqual(raised.exception.code, 2)
+                self.assertIn(message, stderr.getvalue())
 
     def test_synthetic_black_scholes_chain_produces_reasonable_vix(self):
         now = dt.datetime.now(asset_vix.ET_ZONE)
