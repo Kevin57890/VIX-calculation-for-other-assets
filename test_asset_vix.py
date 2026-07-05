@@ -260,6 +260,16 @@ class AssetVixTests(unittest.TestCase):
                 thread_count * rows_per_thread,
             )
 
+    def test_clear_csv_rows_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "records.csv")
+            asset_vix.write_csv_rows(path, [{"symbol": "SPY", "status": "ok"}])
+
+            self.assertTrue(asset_vix.clear_csv_rows(path))
+            self.assertFalse(os.path.exists(path))
+            self.assertFalse(asset_vix.clear_csv_rows(path))
+            self.assertEqual(asset_vix.read_csv_rows(path), ([], []))
+
     def test_cli_rejects_invalid_numeric_boundaries(self):
         cases = [
             (["--target-days", "nan"], "finite number"),

@@ -1,6 +1,7 @@
 import csv
 import importlib.util
 import io
+import json
 import os
 from pathlib import Path
 import sys
@@ -169,6 +170,8 @@ class ServerTokenTests(unittest.TestCase):
                 def fake_compute(symbols, args):
                     self.assertEqual(symbols, ["SPY"])
                     self.assertIsNone(args.max_bid_ask_spread_pct)
+                    self.assertEqual(args.min_open_interest, 0)
+                    self.assertEqual(args.min_volume, 12)
                     self.assertEqual(args.max_quote_age_minutes, 0)
                     self.assertEqual(args.request_delay_seconds, 0)
                     self.assertEqual(args.risk_free_rate, 0)
@@ -188,6 +191,8 @@ class ServerTokenTests(unittest.TestCase):
                     {
                         "symbols": "SPY",
                         "maxBidAskSpreadPct": 0,
+                        "minOpenInterest": 0,
+                        "minVolume": 12,
                         "maxQuoteAgeMinutes": 0,
                         "requestDelaySeconds": 0,
                         "riskFreeRate": 0,
@@ -225,6 +230,20 @@ class ServerTokenTests(unittest.TestCase):
             data = server.records_csv_bytes(path).decode("utf-8")
             self.assertEqual(data.splitlines()[0], ",".join(server.RECORD_HEADERS))
 
+    def test_records_json_bytes_exports_versioned_history(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "calculations.csv"
+            server.calc.write_csv_rows(
+                str(path),
+                [{"symbol": "SPY", "status": "ok", "asset_vix_30d": 18.5}],
+            )
+
+            payload = json.loads(server.records_json_bytes(path))
+            self.assertEqual(payload["version"], "1.1.0")
+            self.assertEqual(payload["count"], 1)
+            self.assertEqual(payload["rows"][0]["symbol"], "SPY")
+            self.assertIn("exported_at_utc", payload)
+
     def test_universes_payload_returns_ordered_universes(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "universes.csv"
@@ -256,6 +275,8 @@ class ServerTokenTests(unittest.TestCase):
     def test_compute_rows_rejects_invalid_numeric_payload(self):
         with self.assertRaisesRegex(ValueError, "strikeLimit must be at least 1"):
             server.compute_rows({"symbols": "SPY", "strikeLimit": 0}, "valid-token-123456")
+        with self.assertRaisesRegex(ValueError, "minVolume must be at least 0"):
+            server.compute_rows({"symbols": "SPY", "minVolume": -1}, "valid-token-123456")
 
     def test_compute_rows_rejects_invalid_symbol_as_bad_request_error(self):
         with self.assertRaisesRegex(ValueError, "Invalid symbol"):
@@ -354,7 +375,7 @@ class ServerTokenTests(unittest.TestCase):
         self.assertIn("Permissions-Policy:", headers)
         self.assertIn("Referrer-Policy: no-referrer", headers)
         self.assertIn("X-Content-Type-Options: nosniff", headers)
-        self.assertEqual(handler.version_string(), "AssetVIXLocal/1.0.0")
+        self.assertEqual(handler.version_string(), "AssetVIXLocal/1.1.0")
 
 
 if __name__ == "__main__":

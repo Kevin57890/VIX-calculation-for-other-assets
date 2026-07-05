@@ -40,6 +40,11 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
 .shell {
   width: min(1280px, calc(100vw - 32px));
   margin: 0 auto;
@@ -133,6 +138,10 @@ h1 {
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 2;
+}
+
+.danger-button {
+  color: var(--danger);
 }
 
 .link-button {

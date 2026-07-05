@@ -10,6 +10,8 @@ const presetChips = document.querySelector("#presetChips");
 const modeSelect = document.querySelector("#modeSelect");
 const fallbackSelect = document.querySelector("#fallbackSelect");
 const strikeLimitInput = document.querySelector("#strikeLimitInput");
+const minOpenInterestInput = document.querySelector("#minOpenInterestInput");
+const minVolumeInput = document.querySelector("#minVolumeInput");
 const quoteAgeInput = document.querySelector("#quoteAgeInput");
 const spreadInput = document.querySelector("#spreadInput");
 const delayInput = document.querySelector("#delayInput");
@@ -22,6 +24,8 @@ const lastRun = document.querySelector("#lastRun");
 const historyBody = document.querySelector("#historyBody");
 const historyNote = document.querySelector("#historyNote");
 const refreshHistoryButton = document.querySelector("#refreshHistoryButton");
+const clearHistoryButton = document.querySelector("#clearHistoryButton");
+const clearHistoryButtonLabel = document.querySelector("#clearHistoryButtonLabel");
 const chartSymbolSelect = document.querySelector("#chartSymbolSelect");
 const chartNote = document.querySelector("#chartNote");
 const chartSummary = document.querySelector("#chartSummary");
@@ -515,18 +519,48 @@ async function loadHistory() {
 }
 
 function buildQueryPayload() {
+  const optionalNumber = (input) => {
+    const value = input.value.trim();
+    return value === "" ? null : Number(value);
+  };
   return {
     symbols: symbolsInput.value,
     mode: modeSelect.value,
     fallbackMode: fallbackSelect.value,
     maxage: "5min",
     strikeLimit: Number(strikeLimitInput.value || 120),
+    minOpenInterest: optionalNumber(minOpenInterestInput),
+    minVolume: optionalNumber(minVolumeInput),
     maxQuoteAgeMinutes: Number(quoteAgeInput.value || 45),
     maxBidAskSpreadPct: Number(spreadInput.value || 200),
     requestDelaySeconds: Number(delayInput.value || 0.25),
     allowStale: allowStaleInput.checked,
     allowExtrapolation: allowExtrapolationInput.checked,
   };
+}
+
+async function clearHistory() {
+  const confirmed = window.confirm(
+    "Delete all local calculation history? This cannot be undone."
+  );
+  if (!confirmed) return;
+
+  clearHistoryButton.disabled = true;
+  clearHistoryButtonLabel.textContent = "Clearing...";
+  try {
+    const data = await api("/api/history/clear", {});
+    historyRows = [];
+    renderHistory(historyRows);
+    renderChart(historyRows);
+    historyNote.textContent = data.cleared
+      ? "Local calculation history cleared"
+      : "Calculation history is already empty";
+  } catch (error) {
+    historyNote.textContent = `Could not clear history: ${error.message}`;
+  } finally {
+    clearHistoryButton.disabled = false;
+    clearHistoryButtonLabel.textContent = "Clear History";
+  }
 }
 
 async function runQuery() {
@@ -603,6 +637,7 @@ document.querySelectorAll("[data-symbols]").forEach((button) => {
 switchTokenButton.addEventListener("click", toggleTokenPanel);
 saveTokenButton.addEventListener("click", saveToken);
 refreshHistoryButton.addEventListener("click", loadHistory);
+clearHistoryButton.addEventListener("click", clearHistory);
 chartSymbolSelect.addEventListener("change", () => renderChart(historyRows));
 window.addEventListener("resize", () => renderChart(historyRows));
 tokenInput.addEventListener("keydown", (event) => {

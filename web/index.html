@@ -96,6 +96,17 @@
 
           <section class="grid-two">
             <label>
+              Min open interest
+              <input id="minOpenInterestInput" type="number" min="0" step="1" placeholder="Any" />
+            </label>
+            <label>
+              Min volume
+              <input id="minVolumeInput" type="number" min="0" step="1" placeholder="Any" />
+            </label>
+          </section>
+
+          <section class="grid-two">
+            <label>
               Max spread %
               <input id="spreadInput" type="number" min="0" max="500" value="200" />
             </label>
@@ -235,6 +246,9 @@
                   </svg>
                   <span>Download CSV</span>
                 </a>
+                <a class="link-button" href="/api/records.json" download>
+                  <span>Download JSON</span>
+                </a>
                 <button id="refreshHistoryButton" class="secondary-button" type="button">
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M21 12a9 9 0 0 1-15.2 6.5" />
@@ -243,6 +257,9 @@
                     <path d="M6 22v-4h4" />
                   </svg>
                   <span>Refresh</span>
+                </button>
+                <button id="clearHistoryButton" class="secondary-button danger-button" type="button">
+                  <span id="clearHistoryButtonLabel">Clear History</span>
                 </button>
               </div>
             </div>

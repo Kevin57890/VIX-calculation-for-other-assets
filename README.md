@@ -41,10 +41,12 @@ Maintenance files:
 - Treasury yield-curve based risk-free-rate interpolation
 - Bid/ask midpoint option pricing
 - Wide-spread quote filtering
+- Minimum option volume and open-interest filters in the web app
 - Stale quote diagnostics
 - Per-symbol failure reasons instead of silently publishing bad values
 - Automatic local CSV records for every calculation
 - Browser time-series chart built from recorded AssetVIX points
+- CSV and JSON history exports with an in-app clear action
 - Thread-safe in-process calculation history writes
 - Automated CI checks across supported Python versions
 
@@ -248,7 +250,8 @@ calculation diagnostics.
 In the web app, the **Time Series** chart connects recorded AssetVIX values by
 record time. The chart can show all recorded symbols or one selected symbol. The
 **History** table shows the latest recorded rows after every query. Use
-**Download CSV** to export the full local record file.
+**Download CSV** or **Download JSON** to export the full local record file. Use
+**Clear History** to remove the local record file after confirmation.
 
 The `records/` directory is ignored by Git so downloaded copies of this project
 do not publish local calculation history.
@@ -277,6 +280,8 @@ accidental long-running requests and unexpected API-credit usage.
   MarketData.app plan.
 - **Fallback**: optional retry mode when cached data is unavailable.
 - **Strike limit**: maximum number of strikes requested per expiration.
+- **Min open interest**: optional server-side option-chain liquidity filter.
+- **Min volume**: optional server-side option-chain activity filter.
 - **Quote age**: maximum accepted quote age before the row is marked stale.
 - **Max spread %**: filters quotes with very wide bid/ask spreads.
 - **Delay sec**: adds a small delay between symbols to reduce bursty API calls.
@@ -285,6 +290,7 @@ accidental long-running requests and unexpected API-credit usage.
   available expirations do not bracket the 30-day target.
 - **Time Series**: plots recorded numeric AssetVIX points over time from the
   local records file.
+- **History actions**: refresh, export as CSV or JSON, or clear local records.
 
 ## Methodology Boundaries
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import datetime as dt
 import io
 import json
 import math
@@ -330,6 +331,18 @@ def payload_float(
     return value
 
 
+def payload_optional_int(
+    payload: Dict[str, Any],
+    key: str,
+    minimum: Optional[int] = None,
+    maximum: Optional[int] = None,
+) -> Optional[int]:
+    raw_value = payload_value(payload, key, None)
+    if raw_value is None:
+        return None
+    return payload_int({key: raw_value}, key, 0, minimum, maximum)
+
+
 def payload_bool(payload: Dict[str, Any], key: str, default: bool) -> bool:
     raw_value = payload_value(payload, key, default)
     if isinstance(raw_value, bool):
@@ -445,6 +458,8 @@ def compute_rows(payload: Dict[str, Any], token: str) -> List[Dict[str, Any]]:
     args.fallback_mode = fallback_mode
     args.maxage = str(payload_value(payload, "maxage", args.maxage))
     args.strike_limit = payload_int(payload, "strikeLimit", args.strike_limit, 1, 1000)
+    args.min_open_interest = payload_optional_int(payload, "minOpenInterest", 0)
+    args.min_volume = payload_optional_int(payload, "minVolume", 0)
     args.min_side_strikes = payload_int(
         payload, "minSideStrikes", args.min_side_strikes, 1, 100
     )
@@ -496,6 +511,19 @@ def records_csv_bytes(path: Path = RECORDS_PATH) -> bytes:
     writer.writeheader()
     writer.writerows(calc.csv_safe_row(row) for row in rows)
     return output.getvalue().encode("utf-8")
+
+
+def records_json_bytes(path: Path = RECORDS_PATH) -> bytes:
+    _, rows = calc.read_csv_rows(str(path))
+    payload = {
+        "version": calc.VERSION,
+        "exported_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(
+            timespec="seconds"
+        ),
+        "count": len(rows),
+        "rows": rows,
+    }
+    return json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
 
 
 def universes_payload(path: Path = UNIVERSE_PATH) -> Dict[str, Any]:
@@ -588,6 +616,20 @@ class AssetVixHandler(BaseHTTPRequestHandler):
         if not head_only:
             self.wfile.write(data)
 
+    def send_records_json(self, head_only: bool = False) -> None:
+        data = records_json_bytes(RECORDS_PATH)
+
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header(
+            "Content-Disposition",
+            'attachment; filename="assetvix-records.json"',
+        )
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        if not head_only:
+            self.wfile.write(data)
+
     def reject_unsafe_request(self, check_origin: bool = False) -> bool:
         if not is_loopback_host(self.headers.get("Host")):
             self.send_error(HTTPStatus.FORBIDDEN, "Forbidden host")
@@ -609,6 +651,9 @@ class AssetVixHandler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/api/records.csv":
             self.send_records_csv(head_only=True)
+            return
+        if parsed.path == "/api/records.json":
+            self.send_records_json(head_only=True)
             return
         if parsed.path in {"/", "/index.html"}:
             self.send_file(WEB_DIR / "index.html", head_only=True)
@@ -659,6 +704,10 @@ class AssetVixHandler(BaseHTTPRequestHandler):
 
         if parsed.path == "/api/records.csv":
             self.send_records_csv()
+            return
+
+        if parsed.path == "/api/records.json":
+            self.send_records_json()
             return
 
         if parsed.path == "/api/universes":
@@ -767,6 +816,11 @@ class AssetVixHandler(BaseHTTPRequestHandler):
                     return
                 rows = compute_rows(payload, token)
                 self.send_json({"ok": True, "rows": rows})
+                return
+
+            if self.path == "/api/history/clear":
+                cleared = calc.clear_csv_rows(str(RECORDS_PATH))
+                self.send_json({"ok": True, "cleared": cleared, "rows": []})
                 return
 
             self.send_error(HTTPStatus.NOT_FOUND)

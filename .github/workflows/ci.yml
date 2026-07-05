@@ -34,5 +34,8 @@ jobs:
       - name: Compile Python sources
         run: python -m compileall -q asset_vix.py server.py run.py
 
+      - name: Check browser JavaScript
+        run: node --check web/app.js
+
       - name: Run unit tests
         run: python -m unittest -v test_asset_vix.py test_server_token.py

@@ -4,6 +4,15 @@ All notable project changes are summarized here.
 
 ## Unreleased
 
+## 1.1.0 - 2026-07-05
+
+- Added optional minimum open-interest and volume filters to browser queries.
+- Added a versioned JSON export for complete calculation history.
+- Added a confirmed in-app action for clearing local calculation history.
+- Added regression coverage for liquidity filters, JSON exports, and history
+  cleanup.
+- Extended CI to validate browser JavaScript syntax.
+
 ## 1.0.0 - 2026-07-04
 
 - Added local web app and CLI for VIX-style 30-day implied-volatility

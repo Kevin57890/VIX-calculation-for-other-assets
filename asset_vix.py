@@ -34,7 +34,7 @@ except ImportError:  # pragma: no cover - Python 3.8 fallback is not expected he
 
 
 MARKETDATA_BASE = "https://api.marketdata.app/v1"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 TREASURY_XML = (
     "https://home.treasury.gov/resource-center/data-chart-center/"
     "interest-rates/pages/xml"
@@ -989,6 +989,14 @@ def read_csv_rows(path: str) -> Tuple[List[str], List[Dict[str, str]]]:
         with open(path, "r", newline="", encoding="utf-8") as handle:
             reader = csv.DictReader(handle)
             return list(reader.fieldnames or []), list(reader)
+
+
+def clear_csv_rows(path: str) -> bool:
+    with _CSV_LOCK:
+        if not os.path.isfile(path):
+            return False
+        os.remove(path)
+        return True
 
 
 def print_rows(rows: Sequence[Dict[str, Any]], as_json: bool) -> None:
