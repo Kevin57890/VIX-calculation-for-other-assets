@@ -34,7 +34,7 @@ except ImportError:  # pragma: no cover - Python 3.8 fallback is not expected he
 
 
 MARKETDATA_BASE = "https://api.marketdata.app/v1"
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 TREASURY_XML = (
     "https://home.treasury.gov/resource-center/data-chart-center/"
     "interest-rates/pages/xml"
@@ -1212,6 +1212,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--json", action="store_true", help="Print JSON lines.")
     parser.add_argument(
+        "--fail-on-non-ok",
+        action="store_true",
+        help="Exit with status 1 when any symbol result is not ok.",
+    )
+    parser.add_argument(
         "--request-delay-seconds",
         type=float,
         default=0.25,
@@ -1299,6 +1304,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print_rows(rows, as_json=args.json)
         if not args.no_record and args.csv:
             record_rows(args.csv, rows, source="cli")
+        if args.fail_on_non_ok and any(row.get("status") != "ok" for row in rows):
+            return 1
         if not args.watch:
             break
         time.sleep(args.interval_seconds)

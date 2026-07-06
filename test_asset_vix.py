@@ -287,6 +287,46 @@ class AssetVixTests(unittest.TestCase):
                 self.assertEqual(raised.exception.code, 2)
                 self.assertIn(message, stderr.getvalue())
 
+    def test_cli_can_fail_on_non_ok_results(self):
+        original_compute = asset_vix.compute_symbols
+        try:
+            for status, expected in [("ok", 0), ("stale_quotes", 1), ("error", 1)]:
+                with self.subTest(status=status):
+                    asset_vix.compute_symbols = lambda *_args, **_kwargs: [
+                        {"symbol": "SPY", "status": status}
+                    ]
+                    stdout = io.StringIO()
+                    with contextlib.redirect_stdout(stdout):
+                        actual = asset_vix.main(
+                            [
+                                "--token",
+                                "valid-token-123",
+                                "--symbols",
+                                "SPY",
+                                "--json",
+                                "--no-record",
+                                "--fail-on-non-ok",
+                            ]
+                        )
+                    self.assertEqual(actual, expected)
+
+            asset_vix.compute_symbols = lambda *_args, **_kwargs: [
+                {"symbol": "SPY", "status": "error"}
+            ]
+            with contextlib.redirect_stdout(io.StringIO()):
+                default_exit = asset_vix.main(
+                    [
+                        "--token",
+                        "valid-token-123",
+                        "--symbols",
+                        "SPY",
+                        "--no-record",
+                    ]
+                )
+            self.assertEqual(default_exit, 0)
+        finally:
+            asset_vix.compute_symbols = original_compute
+
     def test_synthetic_black_scholes_chain_produces_reasonable_vix(self):
         now = dt.datetime.now(asset_vix.ET_ZONE)
         expiry_dt = now + dt.timedelta(days=30)

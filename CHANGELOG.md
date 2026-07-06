@@ -4,6 +4,15 @@ All notable project changes are summarized here.
 
 ## Unreleased
 
+## 1.2.0 - 2026-07-06
+
+- Added web controls for a manual risk-free rate and minimum strike depth.
+- Added history filtering by symbol and result status.
+- Added browser-side persistence for non-sensitive query settings.
+- Added `--fail-on-non-ok` for CLI and scheduled-job integration.
+- Added regression coverage for strict CLI exit codes and the new quality
+  controls.
+
 ## 1.1.0 - 2026-07-05
 
 - Added optional minimum open-interest and volume filters to browser queries.

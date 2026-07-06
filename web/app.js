@@ -12,6 +12,8 @@ const fallbackSelect = document.querySelector("#fallbackSelect");
 const strikeLimitInput = document.querySelector("#strikeLimitInput");
 const minOpenInterestInput = document.querySelector("#minOpenInterestInput");
 const minVolumeInput = document.querySelector("#minVolumeInput");
+const riskFreeRateInput = document.querySelector("#riskFreeRateInput");
+const minSideStrikesInput = document.querySelector("#minSideStrikesInput");
 const quoteAgeInput = document.querySelector("#quoteAgeInput");
 const spreadInput = document.querySelector("#spreadInput");
 const delayInput = document.querySelector("#delayInput");
@@ -26,6 +28,8 @@ const historyNote = document.querySelector("#historyNote");
 const refreshHistoryButton = document.querySelector("#refreshHistoryButton");
 const clearHistoryButton = document.querySelector("#clearHistoryButton");
 const clearHistoryButtonLabel = document.querySelector("#clearHistoryButtonLabel");
+const historySymbolFilter = document.querySelector("#historySymbolFilter");
+const historyStatusFilter = document.querySelector("#historyStatusFilter");
 const chartSymbolSelect = document.querySelector("#chartSymbolSelect");
 const chartNote = document.querySelector("#chartNote");
 const chartSummary = document.querySelector("#chartSummary");
@@ -48,6 +52,22 @@ let historyRows = [];
 const HISTORY_FETCH_LIMIT = 500;
 const HISTORY_TABLE_LIMIT = 25;
 const ALL_SYMBOLS = "__all__";
+const SETTINGS_KEY = "assetvix.query-settings.v1";
+const rememberedControls = [
+  symbolsInput,
+  modeSelect,
+  fallbackSelect,
+  strikeLimitInput,
+  minOpenInterestInput,
+  minVolumeInput,
+  riskFreeRateInput,
+  minSideStrikesInput,
+  quoteAgeInput,
+  spreadInput,
+  delayInput,
+  allowStaleInput,
+  allowExtrapolationInput,
+];
 const chartColors = [
   "#0b8f83",
   "#315f9f",
@@ -79,6 +99,37 @@ function setTokenStatus(configured, source, preview, formatOk = true, formatReas
     : configured
       ? `Current token cannot be used: ${formatReason || "format error"}`
     : "Save a MarketData token before running a query.";
+}
+
+function saveSettings() {
+  const settings = {};
+  for (const control of rememberedControls) {
+    settings[control.id] =
+      control.type === "checkbox" ? control.checked : control.value;
+  }
+  try {
+    window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch (_error) {
+    // The app remains usable when browser storage is unavailable.
+  }
+}
+
+function loadSettings() {
+  try {
+    const settings = JSON.parse(window.localStorage.getItem(SETTINGS_KEY) || "{}");
+    if (!settings || typeof settings !== "object" || Array.isArray(settings)) return;
+    for (const control of rememberedControls) {
+      if (!Object.prototype.hasOwnProperty.call(settings, control.id)) continue;
+      const value = settings[control.id];
+      if (control.type === "checkbox") {
+        if (typeof value === "boolean") control.checked = value;
+      } else if (typeof value === "string") {
+        control.value = value;
+      }
+    }
+  } catch (_error) {
+    // Ignore malformed or unavailable browser storage.
+  }
 }
 
 async function api(path, payload) {
@@ -131,6 +182,7 @@ async function loadUniverses() {
       button.textContent = `${item.name} (${item.count})`;
       button.addEventListener("click", () => {
         symbolsInput.value = button.dataset.symbols || symbolsInput.value;
+        saveSettings();
       });
       presetChips.appendChild(button);
     }
@@ -264,11 +316,25 @@ function renderRows(rows) {
 }
 
 function renderHistory(rows) {
-  const tableRows = rows.slice(-HISTORY_TABLE_LIMIT);
+  const selectedSymbol = historySymbolFilter.value || ALL_SYMBOLS;
+  const selectedStatus = historyStatusFilter.value || ALL_SYMBOLS;
+  const filteredRows = rows.filter((row) => {
+    const symbolMatches =
+      selectedSymbol === ALL_SYMBOLS ||
+      String(row.symbol || "").toUpperCase() === selectedSymbol;
+    const statusMatches =
+      selectedStatus === ALL_SYMBOLS ||
+      badgeClass(String(row.status || "")) === selectedStatus;
+    return symbolMatches && statusMatches;
+  });
+  const tableRows = filteredRows.slice(-HISTORY_TABLE_LIMIT);
   historyBody.innerHTML = "";
   if (!tableRows.length) {
-    historyBody.innerHTML = '<tr><td colspan="6" class="empty">No recorded calculations yet</td></tr>';
-    historyNote.textContent = "Latest recorded calculations";
+    const message = rows.length
+      ? "No history matches these filters"
+      : "No recorded calculations yet";
+    historyBody.innerHTML = `<tr><td colspan="6" class="empty">${message}</td></tr>`;
+    historyNote.textContent = rows.length ? "0 matching rows" : "Latest recorded calculations";
     return;
   }
 
@@ -284,7 +350,22 @@ function renderHistory(rows) {
     `;
     historyBody.appendChild(tr);
   }
-  historyNote.textContent = `${tableRows.length} latest rows shown`;
+  historyNote.textContent = `${tableRows.length} of ${filteredRows.length} matching rows shown`;
+}
+
+function updateHistorySymbolOptions(rows) {
+  const previous = historySymbolFilter.value || ALL_SYMBOLS;
+  const symbols = Array.from(
+    new Set(rows.map((row) => String(row.symbol || "").toUpperCase()).filter(Boolean))
+  ).sort();
+  historySymbolFilter.innerHTML = '<option value="__all__">All</option>';
+  for (const symbol of symbols) {
+    const option = document.createElement("option");
+    option.value = symbol;
+    option.textContent = symbol;
+    historySymbolFilter.appendChild(option);
+  }
+  historySymbolFilter.value = symbols.includes(previous) ? previous : ALL_SYMBOLS;
 }
 
 function chartPoints(rows) {
@@ -508,6 +589,7 @@ async function loadHistory() {
       throw new Error(data.error || "History request failed");
     }
     historyRows = data.rows || [];
+    updateHistorySymbolOptions(historyRows);
     renderHistory(historyRows);
     renderChart(historyRows);
   } catch (error) {
@@ -523,6 +605,7 @@ function buildQueryPayload() {
     const value = input.value.trim();
     return value === "" ? null : Number(value);
   };
+  const riskFreeRatePct = optionalNumber(riskFreeRateInput);
   return {
     symbols: symbolsInput.value,
     mode: modeSelect.value,
@@ -531,6 +614,8 @@ function buildQueryPayload() {
     strikeLimit: Number(strikeLimitInput.value || 120),
     minOpenInterest: optionalNumber(minOpenInterestInput),
     minVolume: optionalNumber(minVolumeInput),
+    minSideStrikes: Number(minSideStrikesInput.value || 5),
+    riskFreeRate: riskFreeRatePct === null ? null : riskFreeRatePct / 100,
     maxQuoteAgeMinutes: Number(quoteAgeInput.value || 45),
     maxBidAskSpreadPct: Number(spreadInput.value || 200),
     requestDelaySeconds: Number(delayInput.value || 0.25),
@@ -550,6 +635,7 @@ async function clearHistory() {
   try {
     const data = await api("/api/history/clear", {});
     historyRows = [];
+    updateHistorySymbolOptions(historyRows);
     renderHistory(historyRows);
     renderChart(historyRows);
     historyNote.textContent = data.cleared
@@ -570,6 +656,7 @@ async function runQuery() {
   }
   queryButton.disabled = true;
   queryButtonLabel.textContent = "Calculating...";
+  saveSettings();
   try {
     const data = await api("/api/query", buildQueryPayload());
     renderRows(data.rows || []);
@@ -631,13 +718,20 @@ async function saveToken() {
 document.querySelectorAll("[data-symbols]").forEach((button) => {
   button.addEventListener("click", () => {
     symbolsInput.value = button.dataset.symbols || symbolsInput.value;
+    saveSettings();
   });
 });
+
+for (const control of rememberedControls) {
+  control.addEventListener("change", saveSettings);
+}
 
 switchTokenButton.addEventListener("click", toggleTokenPanel);
 saveTokenButton.addEventListener("click", saveToken);
 refreshHistoryButton.addEventListener("click", loadHistory);
 clearHistoryButton.addEventListener("click", clearHistory);
+historySymbolFilter.addEventListener("change", () => renderHistory(historyRows));
+historyStatusFilter.addEventListener("change", () => renderHistory(historyRows));
 chartSymbolSelect.addEventListener("change", () => renderChart(historyRows));
 window.addEventListener("resize", () => renderChart(historyRows));
 tokenInput.addEventListener("keydown", (event) => {
@@ -645,6 +739,7 @@ tokenInput.addEventListener("keydown", (event) => {
 });
 queryButton.addEventListener("click", runQuery);
 
+loadSettings();
 loadStatus();
 loadUniverses();
 loadHistory();

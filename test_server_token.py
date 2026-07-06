@@ -172,6 +172,7 @@ class ServerTokenTests(unittest.TestCase):
                     self.assertIsNone(args.max_bid_ask_spread_pct)
                     self.assertEqual(args.min_open_interest, 0)
                     self.assertEqual(args.min_volume, 12)
+                    self.assertEqual(args.min_side_strikes, 7)
                     self.assertEqual(args.max_quote_age_minutes, 0)
                     self.assertEqual(args.request_delay_seconds, 0)
                     self.assertEqual(args.risk_free_rate, 0)
@@ -193,6 +194,7 @@ class ServerTokenTests(unittest.TestCase):
                         "maxBidAskSpreadPct": 0,
                         "minOpenInterest": 0,
                         "minVolume": 12,
+                        "minSideStrikes": 7,
                         "maxQuoteAgeMinutes": 0,
                         "requestDelaySeconds": 0,
                         "riskFreeRate": 0,
@@ -239,7 +241,7 @@ class ServerTokenTests(unittest.TestCase):
             )
 
             payload = json.loads(server.records_json_bytes(path))
-            self.assertEqual(payload["version"], "1.1.0")
+            self.assertEqual(payload["version"], "1.2.0")
             self.assertEqual(payload["count"], 1)
             self.assertEqual(payload["rows"][0]["symbol"], "SPY")
             self.assertIn("exported_at_utc", payload)
@@ -375,7 +377,7 @@ class ServerTokenTests(unittest.TestCase):
         self.assertIn("Permissions-Policy:", headers)
         self.assertIn("Referrer-Policy: no-referrer", headers)
         self.assertIn("X-Content-Type-Options: nosniff", headers)
-        self.assertEqual(handler.version_string(), "AssetVIXLocal/1.1.0")
+        self.assertEqual(handler.version_string(), "AssetVIXLocal/1.2.0")
 
 
 if __name__ == "__main__":

@@ -42,11 +42,14 @@ Maintenance files:
 - Bid/ask midpoint option pricing
 - Wide-spread quote filtering
 - Minimum option volume and open-interest filters in the web app
+- Manual risk-free-rate override and minimum strike-depth control
 - Stale quote diagnostics
 - Per-symbol failure reasons instead of silently publishing bad values
 - Automatic local CSV records for every calculation
 - Browser time-series chart built from recorded AssetVIX points
 - CSV and JSON history exports with an in-app clear action
+- History filtering by symbol and result status
+- Automatic browser-side memory for non-sensitive query settings
 - Thread-safe in-process calculation history writes
 - Automated CI checks across supported Python versions
 
@@ -229,6 +232,16 @@ To run without recording:
 python3 asset_vix.py --symbols SPY --no-record
 ```
 
+For scripts and scheduled jobs, return exit status `1` when any symbol is not
+`ok`:
+
+```bash
+python3 asset_vix.py \
+  --symbols SPY,QQQ \
+  --json \
+  --fail-on-non-ok
+```
+
 You can also provide the token through the shell:
 
 ```bash
@@ -251,7 +264,8 @@ In the web app, the **Time Series** chart connects recorded AssetVIX values by
 record time. The chart can show all recorded symbols or one selected symbol. The
 **History** table shows the latest recorded rows after every query. Use
 **Download CSV** or **Download JSON** to export the full local record file. Use
-**Clear History** to remove the local record file after confirmation.
+the symbol and status controls to filter displayed rows. Use **Clear History**
+to remove the local record file after confirmation.
 
 The `records/` directory is ignored by Git so downloaded copies of this project
 do not publish local calculation history.
@@ -282,6 +296,10 @@ accidental long-running requests and unexpected API-credit usage.
 - **Strike limit**: maximum number of strikes requested per expiration.
 - **Min open interest**: optional server-side option-chain liquidity filter.
 - **Min volume**: optional server-side option-chain activity filter.
+- **Manual rate %**: optional annualized risk-free rate override; blank uses the
+  Treasury curve.
+- **Min side strikes**: minimum usable out-of-the-money puts and calls required
+  for each term.
 - **Quote age**: maximum accepted quote age before the row is marked stale.
 - **Max spread %**: filters quotes with very wide bid/ask spreads.
 - **Delay sec**: adds a small delay between symbols to reduce bursty API calls.
@@ -291,6 +309,9 @@ accidental long-running requests and unexpected API-credit usage.
 - **Time Series**: plots recorded numeric AssetVIX points over time from the
   local records file.
 - **History actions**: refresh, export as CSV or JSON, or clear local records.
+
+The browser remembers symbols, data mode, quality filters, and toggles locally
+between sessions. API tokens are not stored in browser storage.
 
 ## Methodology Boundaries
 

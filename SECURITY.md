@@ -44,3 +44,7 @@ token storage, and records download behavior first.
 Local HTTP responses apply a restrictive Content Security Policy, deny framing,
 disable unnecessary browser permissions, and avoid returning internal exception
 details to the browser.
+
+The browser remembers non-sensitive query settings in local storage. API tokens
+remain in the server-side `.env` file or process environment and are never saved
+to browser storage.
