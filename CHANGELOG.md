@@ -4,6 +4,9 @@ All notable project changes are summarized here.
 
 ## Unreleased
 
+- Added a README usage preview section with a web-app screenshot and quick-start
+  commands for GitHub visitors.
+
 ## 1.2.0 - 2026-07-06
 
 - Added web controls for a manual risk-free rate and minimum strike depth.

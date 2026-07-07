@@ -17,6 +17,30 @@ prototyping rather than for publishing an official index.
 > AssetVIX is not the official Cboe VIX. The official VIX is a proprietary Cboe
 > index based on specific SPX/SPXW option inputs and index-governance rules.
 
+## Usage Preview
+
+![AssetVIX local web app preview](docs/assetvix-web-preview.png)
+
+The preview uses sample values to show the local workflow: choose a symbol list,
+set quote-quality controls, calculate VIX-style 30-day implied volatility,
+review per-symbol diagnostics, and inspect recorded history in the chart.
+Actual calculations require your own MarketData.app token and live, delayed, or
+cached option-chain access.
+
+Quick start:
+
+```bash
+git clone https://github.com/Kevin57890/VIX-calculation-for-other-assets.git
+cd VIX-calculation-for-other-assets
+python3 run.py
+```
+
+For automation or scheduled checks:
+
+```bash
+python3 asset_vix.py --symbols SPY,QQQ --mode delayed --json --fail-on-non-ok
+```
+
 ## Project Status
 
 AssetVIX is a local-first research tool. The repository is intended to be usable
