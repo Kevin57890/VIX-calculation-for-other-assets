@@ -21,11 +21,11 @@ prototyping rather than for publishing an official index.
 
 ![AssetVIX local web app preview](docs/assetvix-web-preview.png)
 
-The preview uses sample values to show the local workflow: choose a symbol list,
-set quote-quality controls, calculate VIX-style 30-day implied volatility,
-review per-symbol diagnostics, and inspect recorded history in the chart.
-Actual calculations require your own MarketData.app token and live, delayed, or
-cached option-chain access.
+The preview uses sample values to show the local workflow: choose or save a
+symbol list, set quote-quality controls, calculate VIX-style 30-day implied
+volatility, export the current run, review per-symbol diagnostics, and inspect
+filtered recorded history in the chart. Actual calculations require your own
+MarketData.app token and live, delayed, or cached option-chain access.
 
 Quick start:
 
@@ -73,6 +73,9 @@ Maintenance files:
 - Browser time-series chart built from recorded AssetVIX points
 - CSV and JSON history exports with an in-app clear action
 - History filtering by symbol and result status
+- Server-side history API filters for symbol and status
+- Current-run CSV and JSON exports from the results table
+- Browser-saved custom symbol lists for recurring research baskets
 - Automatic browser-side memory for non-sensitive query settings
 - Thread-safe in-process calculation history writes
 - Automated CI checks across supported Python versions
@@ -288,8 +291,11 @@ In the web app, the **Time Series** chart connects recorded AssetVIX values by
 record time. The chart can show all recorded symbols or one selected symbol. The
 **History** table shows the latest recorded rows after every query. Use
 **Download CSV** or **Download JSON** to export the full local record file. Use
-the symbol and status controls to filter displayed rows. Use **Clear History**
-to remove the local record file after confirmation.
+the symbol and status controls to request filtered history from the local API.
+Use **Clear History** to remove the local record file after confirmation.
+
+For one-off analysis, the **Results** table can export only the most recent
+calculation run as CSV or JSON without downloading the full history file.
 
 The `records/` directory is ignored by Git so downloaded copies of this project
 do not publish local calculation history.
@@ -314,6 +320,7 @@ accidental long-running requests and unexpected API-credit usage.
 ## Web App Controls
 
 - **Symbols**: comma-, space-, or newline-separated ticker symbols.
+- **Saved lists**: browser-local custom symbol baskets for recurring research.
 - **Data mode**: `delayed`, `cached`, or `live`, depending on the
   MarketData.app plan.
 - **Fallback**: optional retry mode when cached data is unavailable.
@@ -332,6 +339,7 @@ accidental long-running requests and unexpected API-credit usage.
   available expirations do not bracket the 30-day target.
 - **Time Series**: plots recorded numeric AssetVIX points over time from the
   local records file.
+- **Results actions**: export the latest calculation run as CSV or JSON.
 - **History actions**: refresh, export as CSV or JSON, or clear local records.
 
 The browser remembers symbols, data mode, quality filters, and toggles locally

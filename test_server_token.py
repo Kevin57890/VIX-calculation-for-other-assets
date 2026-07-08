@@ -241,10 +241,39 @@ class ServerTokenTests(unittest.TestCase):
             )
 
             payload = json.loads(server.records_json_bytes(path))
-            self.assertEqual(payload["version"], "1.2.0")
+            self.assertEqual(payload["version"], "1.3.0")
             self.assertEqual(payload["count"], 1)
             self.assertEqual(payload["rows"][0]["symbol"], "SPY")
             self.assertIn("exported_at_utc", payload)
+
+    def test_history_payload_filters_by_symbol_and_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "calculations.csv"
+            server.calc.write_csv_rows(
+                str(path),
+                [
+                    {"symbol": "SPY", "status": "ok", "asset_vix_30d": 18.5, "reason": ""},
+                    {"symbol": "QQQ", "status": "error", "asset_vix_30d": "", "reason": "bad chain"},
+                    {"symbol": "SPY", "status": "stale", "asset_vix_30d": 19.2, "reason": ""},
+                    {"symbol": "AAPL", "status": "ok", "asset_vix_30d": 24.1, "reason": ""},
+                ],
+            )
+
+            payload = server.history_payload(path, limit=10, symbol="spy", status="warn")
+            self.assertEqual(payload["matchedCount"], 1)
+            self.assertEqual(payload["totalCount"], 4)
+            self.assertEqual(payload["rows"][0]["symbol"], "SPY")
+            self.assertEqual(payload["rows"][0]["status"], "stale")
+            self.assertEqual(payload["symbols"], ["AAPL", "QQQ", "SPY"])
+
+            errors = server.history_payload(path, limit=10, status="error")
+            self.assertEqual(errors["matchedCount"], 1)
+            self.assertEqual(errors["rows"][0]["symbol"], "QQQ")
+
+            with self.assertRaisesRegex(ValueError, "status must be one of"):
+                server.history_payload(path, status="unknown")
+            with self.assertRaisesRegex(ValueError, "Invalid symbol"):
+                server.history_payload(path, symbol="SPY/../BAD")
 
     def test_universes_payload_returns_ordered_universes(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -377,7 +406,7 @@ class ServerTokenTests(unittest.TestCase):
         self.assertIn("Permissions-Policy:", headers)
         self.assertIn("Referrer-Policy: no-referrer", headers)
         self.assertIn("X-Content-Type-Options: nosniff", headers)
-        self.assertEqual(handler.version_string(), "AssetVIXLocal/1.2.0")
+        self.assertEqual(handler.version_string(), "AssetVIXLocal/1.3.0")
 
 
 if __name__ == "__main__":

@@ -7,6 +7,11 @@ const switchTokenButton = document.querySelector("#switchTokenButton");
 const saveTokenButton = document.querySelector("#saveTokenButton");
 const symbolsInput = document.querySelector("#symbolsInput");
 const presetChips = document.querySelector("#presetChips");
+const listNameInput = document.querySelector("#listNameInput");
+const savedListSelect = document.querySelector("#savedListSelect");
+const saveListButton = document.querySelector("#saveListButton");
+const loadListButton = document.querySelector("#loadListButton");
+const deleteListButton = document.querySelector("#deleteListButton");
 const modeSelect = document.querySelector("#modeSelect");
 const fallbackSelect = document.querySelector("#fallbackSelect");
 const strikeLimitInput = document.querySelector("#strikeLimitInput");
@@ -23,6 +28,8 @@ const queryButton = document.querySelector("#queryButton");
 const queryButtonLabel = document.querySelector("#queryButtonLabel");
 const resultsBody = document.querySelector("#resultsBody");
 const lastRun = document.querySelector("#lastRun");
+const downloadRunCsvButton = document.querySelector("#downloadRunCsvButton");
+const downloadRunJsonButton = document.querySelector("#downloadRunJsonButton");
 const historyBody = document.querySelector("#historyBody");
 const historyNote = document.querySelector("#historyNote");
 const refreshHistoryButton = document.querySelector("#refreshHistoryButton");
@@ -49,10 +56,37 @@ const mainRates = document.querySelector("#mainRates");
 let tokenConfigured = false;
 let tokenPanelForcedOpen = false;
 let historyRows = [];
+let historyMeta = { matchedCount: 0, totalCount: 0 };
+let latestRows = [];
+let appVersion = "";
 const HISTORY_FETCH_LIMIT = 500;
 const HISTORY_TABLE_LIMIT = 25;
 const ALL_SYMBOLS = "__all__";
 const SETTINGS_KEY = "assetvix.query-settings.v1";
+const CUSTOM_LISTS_KEY = "assetvix.custom-symbol-lists.v1";
+const RUN_EXPORT_FIELDS = [
+  "recorded_at_utc",
+  "run_id",
+  "source",
+  "ts_utc",
+  "symbol",
+  "status",
+  "asset_vix_30d",
+  "variance_30d",
+  "target_days",
+  "rate_source",
+  "mode",
+  "expirations",
+  "days",
+  "rates",
+  "forwards",
+  "k0",
+  "strike_counts",
+  "put_counts",
+  "call_counts",
+  "max_quote_age_minutes",
+  "reason",
+];
 const rememberedControls = [
   symbolsInput,
   modeSelect,
@@ -132,6 +166,135 @@ function loadSettings() {
   }
 }
 
+function normalizeListName(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").slice(0, 32);
+}
+
+function loadCustomLists() {
+  try {
+    const lists = JSON.parse(window.localStorage.getItem(CUSTOM_LISTS_KEY) || "{}");
+    if (!lists || typeof lists !== "object" || Array.isArray(lists)) return {};
+    return Object.fromEntries(
+      Object.entries(lists)
+        .filter((entry) => typeof entry[0] === "string" && typeof entry[1] === "string")
+        .map(([name, symbols]) => [normalizeListName(name), symbols.trim()])
+        .filter(([name, symbols]) => name && symbols)
+    );
+  } catch (_error) {
+    return {};
+  }
+}
+
+function storeCustomLists(lists) {
+  try {
+    window.localStorage.setItem(CUSTOM_LISTS_KEY, JSON.stringify(lists));
+  } catch (_error) {
+    // Custom lists are optional; failed storage should not block calculations.
+  }
+}
+
+function renderSavedLists(selected = "") {
+  const lists = loadCustomLists();
+  const names = Object.keys(lists).sort((left, right) => left.localeCompare(right));
+  savedListSelect.innerHTML = '<option value="">None</option>';
+  for (const name of names) {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    savedListSelect.appendChild(option);
+  }
+  savedListSelect.value = names.includes(selected) ? selected : "";
+  loadListButton.disabled = !savedListSelect.value;
+  deleteListButton.disabled = !savedListSelect.value;
+}
+
+function saveCurrentList() {
+  const name = normalizeListName(listNameInput.value);
+  const symbols = symbolsInput.value.trim();
+  if (!name) {
+    listNameInput.focus();
+    return;
+  }
+  if (!symbols) {
+    symbolsInput.focus();
+    return;
+  }
+  const lists = loadCustomLists();
+  lists[name] = symbols;
+  storeCustomLists(lists);
+  listNameInput.value = "";
+  renderSavedLists(name);
+}
+
+function loadSelectedList() {
+  const lists = loadCustomLists();
+  const symbols = lists[savedListSelect.value];
+  if (!symbols) return;
+  symbolsInput.value = symbols;
+  saveSettings();
+}
+
+function deleteSelectedList() {
+  const name = savedListSelect.value;
+  if (!name) return;
+  const lists = loadCustomLists();
+  delete lists[name];
+  storeCustomLists(lists);
+  renderSavedLists();
+}
+
+function setRunExportState() {
+  const hasRows = latestRows.length > 0;
+  downloadRunCsvButton.disabled = !hasRows;
+  downloadRunJsonButton.disabled = !hasRows;
+}
+
+function csvExportValue(value) {
+  let text = value === null || value === undefined ? "" : String(value);
+  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function rowsToCsv(rows) {
+  const lines = [RUN_EXPORT_FIELDS.join(",")];
+  for (const row of rows) {
+    lines.push(RUN_EXPORT_FIELDS.map((field) => csvExportValue(row[field])).join(","));
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function downloadBlob(filename, type, content) {
+  const blob = new Blob([content], { type });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+function exportCurrentRun(format) {
+  if (!latestRows.length) return;
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  if (format === "json") {
+    const payload = {
+      version: appVersion || null,
+      exported_at_utc: new Date().toISOString(),
+      count: latestRows.length,
+      rows: latestRows,
+    };
+    downloadBlob(
+      `assetvix-run-${stamp}.json`,
+      "application/json;charset=utf-8",
+      `${JSON.stringify(payload, null, 2)}\n`
+    );
+    return;
+  }
+  downloadBlob(`assetvix-run-${stamp}.csv`, "text/csv;charset=utf-8", rowsToCsv(latestRows));
+}
+
 async function api(path, payload) {
   const response = await fetch(path, {
     method: "POST",
@@ -154,6 +317,7 @@ async function api(path, payload) {
 async function loadStatus() {
   const response = await fetch("/api/status", { cache: "no-store" });
   const data = await response.json();
+  appVersion = data.version || appVersion;
   setTokenStatus(
     data.tokenConfigured,
     data.tokenSource,
@@ -286,6 +450,8 @@ function updateMain(row) {
 }
 
 function renderRows(rows) {
+  latestRows = rows.slice();
+  setRunExportState();
   resultsBody.innerHTML = "";
   if (!rows.length) {
     resultsBody.innerHTML = '<tr><td colspan="6" class="empty">No results</td></tr>';
@@ -316,25 +482,16 @@ function renderRows(rows) {
 }
 
 function renderHistory(rows) {
-  const selectedSymbol = historySymbolFilter.value || ALL_SYMBOLS;
-  const selectedStatus = historyStatusFilter.value || ALL_SYMBOLS;
-  const filteredRows = rows.filter((row) => {
-    const symbolMatches =
-      selectedSymbol === ALL_SYMBOLS ||
-      String(row.symbol || "").toUpperCase() === selectedSymbol;
-    const statusMatches =
-      selectedStatus === ALL_SYMBOLS ||
-      badgeClass(String(row.status || "")) === selectedStatus;
-    return symbolMatches && statusMatches;
-  });
-  const tableRows = filteredRows.slice(-HISTORY_TABLE_LIMIT);
+  const tableRows = rows.slice(-HISTORY_TABLE_LIMIT);
   historyBody.innerHTML = "";
   if (!tableRows.length) {
-    const message = rows.length
+    const message = historyMeta.totalCount
       ? "No history matches these filters"
       : "No recorded calculations yet";
     historyBody.innerHTML = `<tr><td colspan="6" class="empty">${message}</td></tr>`;
-    historyNote.textContent = rows.length ? "0 matching rows" : "Latest recorded calculations";
+    historyNote.textContent = historyMeta.totalCount
+      ? "0 matching rows"
+      : "Latest recorded calculations";
     return;
   }
 
@@ -350,22 +507,25 @@ function renderHistory(rows) {
     `;
     historyBody.appendChild(tr);
   }
-  historyNote.textContent = `${tableRows.length} of ${filteredRows.length} matching rows shown`;
+  const matchedCount = Number.isFinite(historyMeta.matchedCount)
+    ? historyMeta.matchedCount
+    : rows.length;
+  historyNote.textContent = `${tableRows.length} of ${matchedCount} matching rows shown`;
 }
 
-function updateHistorySymbolOptions(rows) {
+function updateHistorySymbolOptions(symbols) {
   const previous = historySymbolFilter.value || ALL_SYMBOLS;
-  const symbols = Array.from(
-    new Set(rows.map((row) => String(row.symbol || "").toUpperCase()).filter(Boolean))
+  const uniqueSymbols = Array.from(
+    new Set((symbols || []).map((symbol) => String(symbol || "").toUpperCase()).filter(Boolean))
   ).sort();
   historySymbolFilter.innerHTML = '<option value="__all__">All</option>';
-  for (const symbol of symbols) {
+  for (const symbol of uniqueSymbols) {
     const option = document.createElement("option");
     option.value = symbol;
     option.textContent = symbol;
     historySymbolFilter.appendChild(option);
   }
-  historySymbolFilter.value = symbols.includes(previous) ? previous : ALL_SYMBOLS;
+  historySymbolFilter.value = uniqueSymbols.includes(previous) ? previous : ALL_SYMBOLS;
 }
 
 function chartPoints(rows) {
@@ -580,16 +740,24 @@ function renderChart(rows) {
 
 async function loadHistory() {
   try {
-    const response = await fetch(
-      `/api/history?limit=${HISTORY_FETCH_LIMIT}`,
-      { cache: "no-store" }
-    );
+    const params = new URLSearchParams({ limit: String(HISTORY_FETCH_LIMIT) });
+    const selectedSymbol = historySymbolFilter.value || ALL_SYMBOLS;
+    const selectedStatus = historyStatusFilter.value || ALL_SYMBOLS;
+    if (selectedSymbol !== ALL_SYMBOLS) params.set("symbol", selectedSymbol);
+    if (selectedStatus !== ALL_SYMBOLS) params.set("status", selectedStatus);
+    const response = await fetch(`/api/history?${params.toString()}`, {
+      cache: "no-store",
+    });
     const data = await response.json();
     if (!response.ok || !data.ok) {
       throw new Error(data.error || "History request failed");
     }
     historyRows = data.rows || [];
-    updateHistorySymbolOptions(historyRows);
+    historyMeta = {
+      matchedCount: Number(data.matchedCount ?? historyRows.length),
+      totalCount: Number(data.totalCount ?? historyRows.length),
+    };
+    updateHistorySymbolOptions(data.symbols || historyRows.map((row) => row.symbol));
     renderHistory(historyRows);
     renderChart(historyRows);
   } catch (error) {
@@ -635,7 +803,8 @@ async function clearHistory() {
   try {
     const data = await api("/api/history/clear", {});
     historyRows = [];
-    updateHistorySymbolOptions(historyRows);
+    historyMeta = { matchedCount: 0, totalCount: 0 };
+    updateHistorySymbolOptions([]);
     renderHistory(historyRows);
     renderChart(historyRows);
     historyNote.textContent = data.cleared
@@ -662,6 +831,8 @@ async function runQuery() {
     renderRows(data.rows || []);
     await loadHistory();
   } catch (error) {
+    latestRows = [];
+    setRunExportState();
     resultsBody.innerHTML = `<tr><td colspan="6" class="empty">${escapeHtml(error.message)}</td></tr>`;
     updateMain({
       symbol: "ERROR",
@@ -728,10 +899,16 @@ for (const control of rememberedControls) {
 
 switchTokenButton.addEventListener("click", toggleTokenPanel);
 saveTokenButton.addEventListener("click", saveToken);
+saveListButton.addEventListener("click", saveCurrentList);
+loadListButton.addEventListener("click", loadSelectedList);
+deleteListButton.addEventListener("click", deleteSelectedList);
+savedListSelect.addEventListener("change", () => renderSavedLists(savedListSelect.value));
+downloadRunCsvButton.addEventListener("click", () => exportCurrentRun("csv"));
+downloadRunJsonButton.addEventListener("click", () => exportCurrentRun("json"));
 refreshHistoryButton.addEventListener("click", loadHistory);
 clearHistoryButton.addEventListener("click", clearHistory);
-historySymbolFilter.addEventListener("change", () => renderHistory(historyRows));
-historyStatusFilter.addEventListener("change", () => renderHistory(historyRows));
+historySymbolFilter.addEventListener("change", loadHistory);
+historyStatusFilter.addEventListener("change", loadHistory);
 chartSymbolSelect.addEventListener("change", () => renderChart(historyRows));
 window.addEventListener("resize", () => renderChart(historyRows));
 tokenInput.addEventListener("keydown", (event) => {
@@ -740,6 +917,8 @@ tokenInput.addEventListener("keydown", (event) => {
 queryButton.addEventListener("click", runQuery);
 
 loadSettings();
+renderSavedLists();
+setRunExportState();
 loadStatus();
 loadUniverses();
 loadHistory();

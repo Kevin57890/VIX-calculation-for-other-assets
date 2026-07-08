@@ -526,6 +526,70 @@ def records_json_bytes(path: Path = RECORDS_PATH) -> bytes:
     return json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
 
 
+def history_status_bucket(status: Any) -> str:
+    normalized = str(status or "").strip().lower()
+    if normalized == "ok":
+        return "ok"
+    if normalized == "error":
+        return "error"
+    return "warn"
+
+
+def history_payload(
+    path: Path = RECORDS_PATH,
+    limit: int = 25,
+    symbol: Optional[str] = None,
+    status: str = "__all__",
+) -> Dict[str, Any]:
+    limit = min(max(int(limit), 1), 500)
+    _, rows = calc.read_csv_rows(str(path))
+    symbols = sorted(
+        {
+            str(row.get("symbol") or "").upper()
+            for row in rows
+            if str(row.get("symbol") or "").strip()
+        }
+    )
+
+    selected_symbol = ""
+    if symbol and str(symbol).strip().lower() not in {"__all__", "all"}:
+        try:
+            selected_symbol = calc.validate_symbol(symbol)
+        except calc.AssetVixError as exc:
+            raise ValueError(str(exc)) from exc
+
+    selected_status = str(status or "__all__").strip().lower()
+    if selected_status in {"", "__all__", "all"}:
+        selected_status = "__all__"
+    elif selected_status not in {"ok", "warn", "error"}:
+        raise ValueError("status must be one of: all, ok, warn, error")
+
+    filtered = rows
+    if selected_symbol:
+        filtered = [
+            row
+            for row in filtered
+            if str(row.get("symbol") or "").upper() == selected_symbol
+        ]
+    if selected_status != "__all__":
+        filtered = [
+            row
+            for row in filtered
+            if history_status_bucket(row.get("status")) == selected_status
+        ]
+
+    recent_rows = filtered[-limit:]
+    return {
+        "ok": True,
+        "rows": recent_rows,
+        "count": len(recent_rows),
+        "matchedCount": len(filtered),
+        "totalCount": len(rows),
+        "symbols": symbols,
+        "recordsPath": str(path),
+    }
+
+
 def universes_payload(path: Path = UNIVERSE_PATH) -> Dict[str, Any]:
     try:
         universes = calc.load_symbol_universes(str(path))
@@ -692,14 +756,12 @@ class AssetVixHandler(BaseHTTPRequestHandler):
                 limit = int((query.get("limit") or ["25"])[0])
             except ValueError:
                 limit = 25
-            limit = min(max(limit, 1), 500)
-            self.send_json(
-                {
-                    "ok": True,
-                    "rows": calc.read_recent_csv_rows(str(RECORDS_PATH), limit=limit),
-                    "recordsPath": str(RECORDS_PATH),
-                }
-            )
+            symbol = (query.get("symbol") or [None])[0]
+            status = (query.get("status") or ["__all__"])[0]
+            try:
+                self.send_json(history_payload(RECORDS_PATH, limit, symbol, status))
+            except ValueError as exc:
+                self.send_json({"ok": False, "error": str(exc)}, status=400)
             return
 
         if parsed.path == "/api/records.csv":

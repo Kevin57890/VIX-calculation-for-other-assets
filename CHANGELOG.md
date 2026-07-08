@@ -4,6 +4,14 @@ All notable project changes are summarized here.
 
 ## Unreleased
 
+## 1.3.0 - 2026-07-08
+
+- Added browser-saved custom symbol lists for recurring research baskets.
+- Added current-run CSV and JSON exports from the results table.
+- Added symbol and status filters to the local history API, with counts for
+  matched and total records.
+- Refreshed the GitHub README showcase screenshot for the expanded interface.
+
 - Added a README usage preview section with a web-app screenshot and quick-start
   commands for GitHub visitors.
 
