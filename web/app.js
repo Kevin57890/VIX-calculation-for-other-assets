@@ -30,11 +30,17 @@ const resultsBody = document.querySelector("#resultsBody");
 const lastRun = document.querySelector("#lastRun");
 const downloadRunCsvButton = document.querySelector("#downloadRunCsvButton");
 const downloadRunJsonButton = document.querySelector("#downloadRunJsonButton");
+const summaryOk = document.querySelector("#summaryOk");
+const summaryWarn = document.querySelector("#summaryWarn");
+const summaryError = document.querySelector("#summaryError");
+const summaryAverage = document.querySelector("#summaryAverage");
 const historyBody = document.querySelector("#historyBody");
 const historyNote = document.querySelector("#historyNote");
 const refreshHistoryButton = document.querySelector("#refreshHistoryButton");
 const clearHistoryButton = document.querySelector("#clearHistoryButton");
 const clearHistoryButtonLabel = document.querySelector("#clearHistoryButtonLabel");
+const downloadFilteredHistoryCsvLink = document.querySelector("#downloadFilteredHistoryCsvLink");
+const downloadFilteredHistoryJsonLink = document.querySelector("#downloadFilteredHistoryJsonLink");
 const historySymbolFilter = document.querySelector("#historySymbolFilter");
 const historyStatusFilter = document.querySelector("#historyStatusFilter");
 const chartSymbolSelect = document.querySelector("#chartSymbolSelect");
@@ -249,6 +255,24 @@ function setRunExportState() {
   downloadRunJsonButton.disabled = !hasRows;
 }
 
+function updateResultSummary(rows) {
+  const counts = { ok: 0, warn: 0, error: 0 };
+  const values = [];
+  for (const row of rows) {
+    const bucket = badgeClass(String(row.status || ""));
+    counts[bucket] += 1;
+    const value = parseAssetVix(row.asset_vix_30d);
+    if (value !== null && bucket !== "error") values.push(value);
+  }
+  const average = values.length
+    ? values.reduce((total, value) => total + value, 0) / values.length
+    : null;
+  summaryOk.textContent = String(counts.ok);
+  summaryWarn.textContent = String(counts.warn);
+  summaryError.textContent = String(counts.error);
+  summaryAverage.textContent = average === null ? "--" : formatValue(average);
+}
+
 function csvExportValue(value) {
   let text = value === null || value === undefined ? "" : String(value);
   if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
@@ -452,6 +476,7 @@ function updateMain(row) {
 function renderRows(rows) {
   latestRows = rows.slice();
   setRunExportState();
+  updateResultSummary(rows);
   resultsBody.innerHTML = "";
   if (!rows.length) {
     resultsBody.innerHTML = '<tr><td colspan="6" class="empty">No results</td></tr>';
@@ -738,13 +763,25 @@ function renderChart(rows) {
     : "Recorded AssetVIX points";
 }
 
+function historyFilterParams() {
+  const params = new URLSearchParams({ limit: String(HISTORY_FETCH_LIMIT) });
+  const selectedSymbol = historySymbolFilter.value || ALL_SYMBOLS;
+  const selectedStatus = historyStatusFilter.value || ALL_SYMBOLS;
+  if (selectedSymbol !== ALL_SYMBOLS) params.set("symbol", selectedSymbol);
+  if (selectedStatus !== ALL_SYMBOLS) params.set("status", selectedStatus);
+  return params;
+}
+
+function updateFilteredHistoryLinks() {
+  const query = historyFilterParams().toString();
+  downloadFilteredHistoryCsvLink.href = `/api/history.csv?${query}`;
+  downloadFilteredHistoryJsonLink.href = `/api/history.json?${query}`;
+}
+
 async function loadHistory() {
   try {
-    const params = new URLSearchParams({ limit: String(HISTORY_FETCH_LIMIT) });
-    const selectedSymbol = historySymbolFilter.value || ALL_SYMBOLS;
-    const selectedStatus = historyStatusFilter.value || ALL_SYMBOLS;
-    if (selectedSymbol !== ALL_SYMBOLS) params.set("symbol", selectedSymbol);
-    if (selectedStatus !== ALL_SYMBOLS) params.set("status", selectedStatus);
+    const params = historyFilterParams();
+    updateFilteredHistoryLinks();
     const response = await fetch(`/api/history?${params.toString()}`, {
       cache: "no-store",
     });
@@ -919,6 +956,8 @@ queryButton.addEventListener("click", runQuery);
 loadSettings();
 renderSavedLists();
 setRunExportState();
+updateResultSummary([]);
+updateFilteredHistoryLinks();
 loadStatus();
 loadUniverses();
 loadHistory();

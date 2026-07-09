@@ -4,6 +4,15 @@ All notable project changes are summarized here.
 
 ## Unreleased
 
+## 1.4.0 - 2026-07-09
+
+- Added filtered history CSV and JSON exports that respect the selected symbol
+  and status filters.
+- Added a current-run summary strip for OK, warning, error, and average 30-day
+  values.
+- Refreshed the GitHub README showcase screenshot for the expanded export
+  workflow.
+
 ## 1.3.0 - 2026-07-08
 
 - Added browser-saved custom symbol lists for recurring research baskets.

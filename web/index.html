@@ -238,6 +238,24 @@
                 </button>
               </div>
             </div>
+            <div class="result-summary" id="resultSummary">
+              <div>
+                <span>OK</span>
+                <strong id="summaryOk">0</strong>
+              </div>
+              <div>
+                <span>Warnings</span>
+                <strong id="summaryWarn">0</strong>
+              </div>
+              <div>
+                <span>Errors</span>
+                <strong id="summaryError">0</strong>
+              </div>
+              <div>
+                <span>Avg 30D</span>
+                <strong id="summaryAverage">--</strong>
+              </div>
+            </div>
             <table>
               <thead>
                 <tr>
@@ -308,10 +326,16 @@
                     <path d="m7 10 5 5 5-5" />
                     <path d="M5 21h14" />
                   </svg>
-                  <span>Download CSV</span>
+                  <span>Full CSV</span>
                 </a>
                 <a class="link-button" href="/api/records.json" download>
-                  <span>Download JSON</span>
+                  <span>Full JSON</span>
+                </a>
+                <a id="downloadFilteredHistoryCsvLink" class="link-button" href="/api/history.csv?limit=500" download>
+                  <span>Filtered CSV</span>
+                </a>
+                <a id="downloadFilteredHistoryJsonLink" class="link-button" href="/api/history.json?limit=500" download>
+                  <span>Filtered JSON</span>
                 </a>
                 <button id="refreshHistoryButton" class="secondary-button" type="button">
                   <svg viewBox="0 0 24 24" aria-hidden="true">

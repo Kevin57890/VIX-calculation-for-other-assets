@@ -491,6 +491,38 @@ textarea:focus {
   flex-wrap: wrap;
 }
 
+.result-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.result-summary div {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fbfcfc;
+  padding: 10px 12px;
+}
+
+.result-summary span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.result-summary strong {
+  display: block;
+  margin-top: 5px;
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1.1;
+  font-weight: 780;
+}
+
 .chart-wrap {
   padding: 20px;
   border-top: 1px solid var(--line);
@@ -729,6 +761,10 @@ tbody tr:hover {
   }
 
   .chart-summary {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .result-summary {
     grid-template-columns: 1fr 1fr;
   }
 

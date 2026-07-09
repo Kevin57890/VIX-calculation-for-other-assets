@@ -23,9 +23,9 @@ prototyping rather than for publishing an official index.
 
 The preview uses sample values to show the local workflow: choose or save a
 symbol list, set quote-quality controls, calculate VIX-style 30-day implied
-volatility, export the current run, review per-symbol diagnostics, and inspect
-filtered recorded history in the chart. Actual calculations require your own
-MarketData.app token and live, delayed, or cached option-chain access.
+volatility, review the run summary, export the current run, review per-symbol
+diagnostics, and export filtered recorded history. Actual calculations require
+your own MarketData.app token and live, delayed, or cached option-chain access.
 
 Quick start:
 
@@ -75,6 +75,8 @@ Maintenance files:
 - History filtering by symbol and result status
 - Server-side history API filters for symbol and status
 - Current-run CSV and JSON exports from the results table
+- Filtered history CSV and JSON exports from the selected history view
+- Current-run summary for OK, warning, error, and average 30-day values
 - Browser-saved custom symbol lists for recurring research baskets
 - Automatic browser-side memory for non-sensitive query settings
 - Thread-safe in-process calculation history writes
@@ -292,10 +294,14 @@ record time. The chart can show all recorded symbols or one selected symbol. The
 **History** table shows the latest recorded rows after every query. Use
 **Download CSV** or **Download JSON** to export the full local record file. Use
 the symbol and status controls to request filtered history from the local API.
-Use **Clear History** to remove the local record file after confirmation.
+Use **Filtered CSV** or **Filtered JSON** to export only the current filtered
+history view. Use **Clear History** to remove the local record file after
+confirmation.
 
 For one-off analysis, the **Results** table can export only the most recent
-calculation run as CSV or JSON without downloading the full history file.
+calculation run as CSV or JSON without downloading the full history file. The
+same section summarizes OK, warning, error, and average 30-day values for the
+latest run.
 
 The `records/` directory is ignored by Git so downloaded copies of this project
 do not publish local calculation history.
@@ -339,8 +345,10 @@ accidental long-running requests and unexpected API-credit usage.
   available expirations do not bracket the 30-day target.
 - **Time Series**: plots recorded numeric AssetVIX points over time from the
   local records file.
-- **Results actions**: export the latest calculation run as CSV or JSON.
-- **History actions**: refresh, export as CSV or JSON, or clear local records.
+- **Results actions**: summarize and export the latest calculation run as CSV
+  or JSON.
+- **History actions**: refresh, export all records, export filtered records, or
+  clear local records.
 
 The browser remembers symbols, data mode, quality filters, and toggles locally
 between sessions. API tokens are not stored in browser storage.

@@ -499,9 +499,11 @@ def compute_rows(payload: Dict[str, Any], token: str) -> List[Dict[str, Any]]:
     return calc.record_rows(str(RECORDS_PATH), rows, source="web")
 
 
-def records_csv_bytes(path: Path = RECORDS_PATH) -> bytes:
+def csv_rows_bytes(
+    rows: List[Dict[str, Any]],
+    fieldnames: Optional[List[str]] = None,
+) -> bytes:
     output = io.StringIO()
-    fieldnames, rows = calc.read_csv_rows(str(path))
     writer = csv.DictWriter(
         output,
         fieldnames=fieldnames or RECORD_HEADERS,
@@ -511,6 +513,11 @@ def records_csv_bytes(path: Path = RECORDS_PATH) -> bytes:
     writer.writeheader()
     writer.writerows(calc.csv_safe_row(row) for row in rows)
     return output.getvalue().encode("utf-8")
+
+
+def records_csv_bytes(path: Path = RECORDS_PATH) -> bytes:
+    fieldnames, rows = calc.read_csv_rows(str(path))
+    return csv_rows_bytes(rows, fieldnames or RECORD_HEADERS)
 
 
 def records_json_bytes(path: Path = RECORDS_PATH) -> bytes:
@@ -524,6 +531,17 @@ def records_json_bytes(path: Path = RECORDS_PATH) -> bytes:
         "rows": rows,
     }
     return json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+
+
+def parse_history_query(query_string: str) -> tuple[int, Optional[str], str]:
+    query = urllib.parse.parse_qs(query_string)
+    try:
+        limit = int((query.get("limit") or ["25"])[0])
+    except ValueError:
+        limit = 25
+    symbol = (query.get("symbol") or [None])[0]
+    status = (query.get("status") or ["__all__"])[0]
+    return limit, symbol, status
 
 
 def history_status_bucket(status: Any) -> str:
@@ -588,6 +606,39 @@ def history_payload(
         "symbols": symbols,
         "recordsPath": str(path),
     }
+
+
+def history_csv_bytes(
+    path: Path = RECORDS_PATH,
+    limit: int = 25,
+    symbol: Optional[str] = None,
+    status: str = "__all__",
+) -> bytes:
+    payload = history_payload(path, limit, symbol, status)
+    return csv_rows_bytes(payload["rows"], RECORD_HEADERS)
+
+
+def history_json_bytes(
+    path: Path = RECORDS_PATH,
+    limit: int = 25,
+    symbol: Optional[str] = None,
+    status: str = "__all__",
+) -> bytes:
+    payload = history_payload(path, limit, symbol, status)
+    payload.update(
+        {
+            "version": calc.VERSION,
+            "exported_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(
+                timespec="seconds"
+            ),
+            "filters": {
+                "limit": min(max(int(limit), 1), 500),
+                "symbol": symbol or "__all__",
+                "status": status or "__all__",
+            },
+        }
+    )
+    return json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
 
 
 def universes_payload(path: Path = UNIVERSE_PATH) -> Dict[str, Any]:
@@ -694,6 +745,44 @@ class AssetVixHandler(BaseHTTPRequestHandler):
         if not head_only:
             self.wfile.write(data)
 
+    def send_history_csv(self, query_string: str, head_only: bool = False) -> None:
+        limit, symbol, status = parse_history_query(query_string)
+        try:
+            data = history_csv_bytes(RECORDS_PATH, limit, symbol, status)
+        except ValueError as exc:
+            self.send_json({"ok": False, "error": str(exc)}, status=400)
+            return
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/csv; charset=utf-8")
+        self.send_header(
+            "Content-Disposition",
+            'attachment; filename="assetvix-filtered-history.csv"',
+        )
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        if not head_only:
+            self.wfile.write(data)
+
+    def send_history_json(self, query_string: str, head_only: bool = False) -> None:
+        limit, symbol, status = parse_history_query(query_string)
+        try:
+            data = history_json_bytes(RECORDS_PATH, limit, symbol, status)
+        except ValueError as exc:
+            self.send_json({"ok": False, "error": str(exc)}, status=400)
+            return
+
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header(
+            "Content-Disposition",
+            'attachment; filename="assetvix-filtered-history.json"',
+        )
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        if not head_only:
+            self.wfile.write(data)
+
     def reject_unsafe_request(self, check_origin: bool = False) -> bool:
         if not is_loopback_host(self.headers.get("Host")):
             self.send_error(HTTPStatus.FORBIDDEN, "Forbidden host")
@@ -718,6 +807,12 @@ class AssetVixHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/records.json":
             self.send_records_json(head_only=True)
+            return
+        if parsed.path == "/api/history.csv":
+            self.send_history_csv(parsed.query, head_only=True)
+            return
+        if parsed.path == "/api/history.json":
+            self.send_history_json(parsed.query, head_only=True)
             return
         if parsed.path in {"/", "/index.html"}:
             self.send_file(WEB_DIR / "index.html", head_only=True)
@@ -751,13 +846,7 @@ class AssetVixHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/api/history":
-            query = urllib.parse.parse_qs(parsed.query)
-            try:
-                limit = int((query.get("limit") or ["25"])[0])
-            except ValueError:
-                limit = 25
-            symbol = (query.get("symbol") or [None])[0]
-            status = (query.get("status") or ["__all__"])[0]
+            limit, symbol, status = parse_history_query(parsed.query)
             try:
                 self.send_json(history_payload(RECORDS_PATH, limit, symbol, status))
             except ValueError as exc:
@@ -770,6 +859,14 @@ class AssetVixHandler(BaseHTTPRequestHandler):
 
         if parsed.path == "/api/records.json":
             self.send_records_json()
+            return
+
+        if parsed.path == "/api/history.csv":
+            self.send_history_csv(parsed.query)
+            return
+
+        if parsed.path == "/api/history.json":
+            self.send_history_json(parsed.query)
             return
 
         if parsed.path == "/api/universes":
