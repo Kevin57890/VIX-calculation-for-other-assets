@@ -84,42 +84,111 @@ Maintenance files:
 
 ## Formula
 
-For each selected expiration, AssetVIX estimates the forward level:
+The formulas below use the same public VIX-style structure implemented by the
+app. For each selected expiration term `j`, time to expiration is annualized as
+`T_j`, the continuously compounded risk-free rate is `R_j`, and option prices
+are bid/ask midpoints after the configured quality filters.
 
-```text
-F = K + exp(RT) * (Call(K) - Put(K))
-```
+Notation:
 
-where `K` is the strike with the smallest absolute call/put price difference.
+- `C_j(K)` and `P_j(K)`: call and put midpoints at strike `K`
+- `F_j`: forward level for expiration term `j`
+- `K_{0,j}`: strike immediately at or below the forward level
+- `Q_j(K_i)`: selected OTM option price used in the variance sum
+- `Delta K_i`: strike spacing around selected strike `K_i`
+- `sigma_j^2`: annualized variance for one expiration term
+- `sigma_30^2`: interpolated 30-day variance
 
-`K0` is the highest strike less than or equal to `F`.
+### Forward Level
 
-For each selected strike, the app uses:
+AssetVIX first finds the strike where call and put prices are closest:
+
+$$
+K_j^* = \arg\min_K \left| C_j(K) - P_j(K) \right|
+$$
+
+It then estimates the forward level with put-call parity:
+
+$$
+F_j = K_j^* + e^{R_jT_j}\left(C_j(K_j^*) - P_j(K_j^*)\right)
+$$
+
+The reference strike is the highest available strike less than or equal to the
+forward level:
+
+$$
+K_{0,j} = \max\{K_i : K_i \le F_j\}
+$$
+
+### Option Price Selection
+
+For each selected strike `K_i`, the option value used in the variance sum is:
+
+$$
+Q_j(K_i) =
+\begin{cases}
+P_j(K_i), & K_i < K_{0,j} \\
+\frac{C_j(K_i) + P_j(K_i)}{2}, & K_i = K_{0,j} \\
+C_j(K_i), & K_i > K_{0,j}
+\end{cases}
+$$
+
+In practical terms:
 
 - OTM puts when `K < K0`
 - the average of call and put midpoints when `K = K0`
 - OTM calls when `K > K0`
 
-The strike interval is:
+### Strike Intervals
 
-```text
-DeltaK(i) = K(i+1) - K(i)                    for the first strike
-DeltaK(i) = (K(i+1) - K(i-1)) / 2            for interior strikes
-DeltaK(i) = K(i) - K(i-1)                    for the last strike
-```
+The strike interval around each selected strike is:
 
-Single-term variance is:
+$$
+\Delta K_i =
+\begin{cases}
+K_{i+1} - K_i, & i = 1 \\
+\frac{K_{i+1} - K_{i-1}}{2}, & 1 < i < n \\
+K_i - K_{i-1}, & i = n
+\end{cases}
+$$
 
-```text
-sigma^2 = (2 / T) * sum[DeltaK / K^2 * exp(RT) * Q(K)]
-          - (1 / T) * (F / K0 - 1)^2
-```
+### Single-Term Variance
 
-The final 30-day value is the square root of the interpolated 30-day variance:
+Each expiration term produces one annualized variance estimate:
 
-```text
-AssetVIX = 100 * sqrt(variance_30d)
-```
+$$
+\sigma_j^2 =
+\frac{2}{T_j}\sum_i
+\frac{\Delta K_i}{K_i^2}e^{R_jT_j}Q_j(K_i)
+-
+\frac{1}{T_j}\left(\frac{F_j}{K_{0,j}} - 1\right)^2
+$$
+
+### 30-Day Interpolation
+
+When two expirations bracket the target horizon, AssetVIX interpolates total
+variance to 30 days. Let `N_30` be the number of minutes in 30 days, `N_365`
+the number of minutes in 365 days, and `N_1`, `N_2` the minutes to the front
+and rear expirations:
+
+$$
+\sigma_{30}^2 =
+\left[
+T_1\sigma_1^2\frac{N_2 - N_{30}}{N_2 - N_1}
++
+T_2\sigma_2^2\frac{N_{30} - N_1}{N_2 - N_1}
+\right]
+\frac{N_{365}}{N_{30}}
+$$
+
+If a selected expiration is effectively at the target horizon, the app uses
+that term's variance directly.
+
+The displayed AssetVIX value is:
+
+$$
+\text{AssetVIX}_{30d} = 100\sqrt{\sigma_{30}^2}
+$$
 
 By default, the app uses the SPX VIX-style expiration window of 23 to 37 days
 around the 30-day target.
