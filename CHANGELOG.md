@@ -4,6 +4,9 @@ All notable project changes are summarized here.
 
 ## Unreleased
 
+- Reworked the GitHub README homepage so the formula section uses stable
+  plain-text notation instead of Markdown math blocks.
+
 ## 1.5.0 - 2026-07-10
 
 - Added a filtered history analytics API for latest, previous, change, average,

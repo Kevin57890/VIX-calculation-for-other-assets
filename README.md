@@ -8,14 +8,24 @@ AssetVIX is a local web application and command-line tool for calculating a
 VIX-style 30-day option-implied volatility value for optionable US equities and
 ETFs.
 
-The app uses MarketData.app option-chain data, US Treasury yield-curve data, and
-the public SPX VIX formula structure: forward-price estimation from put-call
-parity, `K0` selection, out-of-the-money option selection, single-term variance,
-and 30-day variance interpolation. It is designed for research, monitoring, and
-prototyping rather than for publishing an official index.
-
 > AssetVIX is not the official Cboe VIX. The official VIX is a proprietary Cboe
 > index based on specific SPX/SPXW option inputs and index-governance rules.
+
+## What It Does
+
+AssetVIX turns option-chain data into a practical local volatility-monitoring
+workflow:
+
+- estimates a VIX-style 30-day implied-volatility value for selected symbols
+- runs locally in a browser or from the command line
+- records every calculation to local CSV history
+- charts historical AssetVIX values
+- filters, summarizes, and exports calculation history
+- keeps bad or stale inputs visible as diagnostics instead of hiding failures
+
+The app uses MarketData.app option-chain data, US Treasury yield-curve data, and
+the public SPX VIX calculation structure. It is designed for research,
+monitoring, and prototyping rather than for publishing an official index.
 
 ## Usage Preview
 
@@ -42,25 +52,11 @@ For automation or scheduled checks:
 python3 asset_vix.py --symbols SPY,QQQ --mode delayed --json --fail-on-non-ok
 ```
 
-## Project Status
-
-AssetVIX is a local-first research tool. The repository is intended to be usable
-from a fresh clone: it includes the local web app, CLI, preset symbol universes,
-unit tests, contribution notes, security guidance, and a changelog.
-
-Maintenance files:
-
-- [Contributing guide](CONTRIBUTING.md)
-- [Security policy](SECURITY.md)
-- [Changelog](CHANGELOG.md)
-
 ## Highlights
 
-- Local browser-based UI
-- Command-line batch mode
-- Works with user-provided MarketData.app API tokens
-- Token validation before saving
-- No third-party Python dependencies
+- Local browser UI and command-line batch mode
+- User-provided MarketData.app API token with validation before saving
+- No third-party Python runtime dependencies
 - Preset symbol universes for liquid ETFs and large-cap equities
 - 30-day variance interpolation
 - Treasury yield-curve based risk-free-rate interpolation
@@ -87,54 +83,54 @@ Maintenance files:
 
 ## Formula
 
-The formulas below use the same public VIX-style structure implemented by the
-app. For each selected expiration term `j`, time to expiration is annualized as
-`T_j`, the continuously compounded risk-free rate is `R_j`, and option prices
-are bid/ask midpoints after the configured quality filters.
+This section intentionally uses plain text formulas instead of GitHub math
+blocks. The README stays readable even when a Markdown viewer does not render
+LaTeX.
+
+The calculation follows the public VIX-style structure. For each selected
+expiration term:
 
 Notation:
 
-- `C_j(K)` and `P_j(K)`: call and put midpoints at strike `K`
-- `F_j`: forward level for expiration term `j`
-- `K_{0,j}`: strike immediately at or below the forward level
-- `Q_j(K_i)`: selected OTM option price used in the variance sum
-- `Delta K_i`: strike spacing around selected strike `K_i`
-- `sigma_j^2`: annualized variance for one expiration term
-- `sigma_30^2`: interpolated 30-day variance
+- `T`: time to expiration in years
+- `R`: continuously compounded risk-free rate
+- `K`: option strike
+- `C(K)`: call midpoint at strike `K`
+- `P(K)`: put midpoint at strike `K`
+- `F`: estimated forward level
+- `K0`: highest selected strike at or below `F`
+- `Q(K)`: option price used in the variance sum
+- `DeltaK`: strike spacing around a selected strike
 
 ### Forward Level
 
-AssetVIX first finds the strike where call and put prices are closest:
+1. Find the strike where call and put prices are closest:
 
-$$
-K_j^* = \arg\min_K \left| C_j(K) - P_j(K) \right|
-$$
+```text
+K* = strike where abs(C(K) - P(K)) is smallest
+```
 
-It then estimates the forward level with put-call parity:
+2. Estimate the forward level with put-call parity:
 
-$$
-F_j = K_j^* + e^{R_jT_j}\left(C_j(K_j^*) - P_j(K_j^*)\right)
-$$
+```text
+F = K* + exp(R * T) * (C(K*) - P(K*))
+```
 
-The reference strike is the highest available strike less than or equal to the
-forward level:
+3. Select `K0`:
 
-$$
-K_{0,j} = \max\{K_i : K_i \le F_j\}
-$$
+```text
+K0 = highest available strike where K <= F
+```
 
 ### Option Price Selection
 
-For each selected strike `K_i`, the option value used in the variance sum is:
+For each selected strike, AssetVIX uses:
 
-$$
-Q_j(K_i) =
-\begin{cases}
-P_j(K_i), & K_i < K_{0,j} \\
-\frac{C_j(K_i) + P_j(K_i)}{2}, & K_i = K_{0,j} \\
-C_j(K_i), & K_i > K_{0,j}
-\end{cases}
-$$
+```text
+if K < K0:  Q(K) = put midpoint
+if K = K0:  Q(K) = average of call midpoint and put midpoint
+if K > K0:  Q(K) = call midpoint
+```
 
 In practical terms:
 
@@ -144,54 +140,57 @@ In practical terms:
 
 ### Strike Intervals
 
-The strike interval around each selected strike is:
+The interval around each selected strike is:
 
-$$
-\Delta K_i =
-\begin{cases}
-K_{i+1} - K_i, & i = 1 \\
-\frac{K_{i+1} - K_{i-1}}{2}, & 1 < i < n \\
-K_i - K_{i-1}, & i = n
-\end{cases}
-$$
+```text
+first strike:   DeltaK = next strike - current strike
+middle strike:  DeltaK = (next strike - previous strike) / 2
+last strike:    DeltaK = current strike - previous strike
+```
 
 ### Single-Term Variance
 
 Each expiration term produces one annualized variance estimate:
 
-$$
-\sigma_j^2 =
-\frac{2}{T_j}\sum_i
-\frac{\Delta K_i}{K_i^2}e^{R_jT_j}Q_j(K_i)
--
-\frac{1}{T_j}\left(\frac{F_j}{K_{0,j}} - 1\right)^2
-$$
+```text
+term_variance =
+  (2 / T) * sum((DeltaK / K^2) * exp(R * T) * Q(K))
+  - (1 / T) * (F / K0 - 1)^2
+```
 
 ### 30-Day Interpolation
 
-When two expirations bracket the target horizon, AssetVIX interpolates total
-variance to 30 days. Let `N_30` be the number of minutes in 30 days, `N_365`
-the number of minutes in 365 days, and `N_1`, `N_2` the minutes to the front
-and rear expirations:
+When two expirations bracket the target horizon, AssetVIX interpolates to 30
+days. Let:
 
-$$
-\sigma_{30}^2 =
-\left[
-T_1\sigma_1^2\frac{N_2 - N_{30}}{N_2 - N_1}
-+
-T_2\sigma_2^2\frac{N_{30} - N_1}{N_2 - N_1}
-\right]
-\frac{N_{365}}{N_{30}}
-$$
+```text
+N30  = minutes in 30 days
+N365 = minutes in 365 days
+N1   = minutes to the front expiration
+N2   = minutes to the rear expiration
+T1   = years to the front expiration
+T2   = years to the rear expiration
+```
+
+Then:
+
+```text
+variance_30d =
+  (
+    T1 * variance1 * (N2 - N30) / (N2 - N1)
+    + T2 * variance2 * (N30 - N1) / (N2 - N1)
+  )
+  * N365 / N30
+```
 
 If a selected expiration is effectively at the target horizon, the app uses
 that term's variance directly.
 
 The displayed AssetVIX value is:
 
-$$
-\text{AssetVIX}_{30d} = 100\sqrt{\sigma_{30}^2}
-$$
+```text
+AssetVIX_30d = 100 * sqrt(variance_30d)
+```
 
 By default, the app uses the SPX VIX-style expiration window of 23 to 37 days
 around the 30-day target.
@@ -214,6 +213,18 @@ For each symbol, AssetVIX:
 
 The output includes diagnostic fields such as selected expirations, forward
 levels, `K0`, strike counts, quote age, and failure reasons.
+
+## Project Status
+
+AssetVIX is a local-first research tool. The repository is intended to be usable
+from a fresh clone: it includes the local web app, CLI, preset symbol universes,
+unit tests, contribution notes, security guidance, and a changelog.
+
+Maintenance files:
+
+- [Contributing guide](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
+- [Changelog](CHANGELOG.md)
 
 ## Requirements
 
