@@ -43,6 +43,11 @@ const downloadFilteredHistoryCsvLink = document.querySelector("#downloadFiltered
 const downloadFilteredHistoryJsonLink = document.querySelector("#downloadFilteredHistoryJsonLink");
 const historySymbolFilter = document.querySelector("#historySymbolFilter");
 const historyStatusFilter = document.querySelector("#historyStatusFilter");
+const historyLatest = document.querySelector("#historyLatest");
+const historyChange = document.querySelector("#historyChange");
+const historyAverage = document.querySelector("#historyAverage");
+const historyRange = document.querySelector("#historyRange");
+const historyNumeric = document.querySelector("#historyNumeric");
 const chartSymbolSelect = document.querySelector("#chartSymbolSelect");
 const chartNote = document.querySelector("#chartNote");
 const chartSummary = document.querySelector("#chartSummary");
@@ -391,6 +396,13 @@ function formatValue(value) {
   return Number.isFinite(numeric) ? numeric.toFixed(2) : String(value);
 }
 
+function formatSignedValue(value) {
+  if (value === null || value === undefined || value === "") return "--";
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return String(value);
+  return `${numeric > 0 ? "+" : ""}${numeric.toFixed(2)}`;
+}
+
 function formatDateTime(value) {
   if (!value) return "--";
   const date = new Date(value);
@@ -536,6 +548,23 @@ function renderHistory(rows) {
     ? historyMeta.matchedCount
     : rows.length;
   historyNote.textContent = `${tableRows.length} of ${matchedCount} matching rows shown`;
+}
+
+function renderHistorySummary(summary) {
+  const latest = summary?.latest;
+  const latestSymbol = latest?.symbol ? `${latest.symbol} ` : "";
+  historyLatest.textContent = latest ? `${latestSymbol}${formatValue(latest.value)}` : "--";
+  historyChange.textContent = formatSignedValue(summary?.change);
+  historyChange.classList.remove("trend-up", "trend-down", "trend-flat");
+  historyChange.classList.add(`trend-${summary?.trend || "flat"}`);
+  historyAverage.textContent = formatValue(summary?.average);
+  historyRange.textContent =
+    summary?.low === null || summary?.low === undefined
+      ? "--"
+      : `${formatValue(summary.low)} - ${formatValue(summary.high)}`;
+  const numericCount = Number(summary?.numericCount ?? 0);
+  const matchedCount = Number(summary?.matchedCount ?? 0);
+  historyNumeric.textContent = matchedCount ? `${numericCount}/${matchedCount}` : "--";
 }
 
 function updateHistorySymbolOptions(symbols) {
@@ -782,12 +811,20 @@ async function loadHistory() {
   try {
     const params = historyFilterParams();
     updateFilteredHistoryLinks();
-    const response = await fetch(`/api/history?${params.toString()}`, {
-      cache: "no-store",
-    });
-    const data = await response.json();
+    const query = params.toString();
+    const [response, summaryResponse] = await Promise.all([
+      fetch(`/api/history?${query}`, { cache: "no-store" }),
+      fetch(`/api/history/summary?${query}`, { cache: "no-store" }),
+    ]);
+    const [data, summary] = await Promise.all([
+      response.json(),
+      summaryResponse.json(),
+    ]);
     if (!response.ok || !data.ok) {
       throw new Error(data.error || "History request failed");
+    }
+    if (!summaryResponse.ok || !summary.ok) {
+      throw new Error(summary.error || "History summary request failed");
     }
     historyRows = data.rows || [];
     historyMeta = {
@@ -796,10 +833,12 @@ async function loadHistory() {
     };
     updateHistorySymbolOptions(data.symbols || historyRows.map((row) => row.symbol));
     renderHistory(historyRows);
+    renderHistorySummary(summary);
     renderChart(historyRows);
   } catch (error) {
     historyBody.innerHTML = `<tr><td colspan="6" class="empty">${escapeHtml(error.message)}</td></tr>`;
     historyNote.textContent = "History unavailable";
+    renderHistorySummary(null);
     chartEmpty.hidden = false;
     chartLegend.innerHTML = "";
   }
@@ -843,6 +882,7 @@ async function clearHistory() {
     historyMeta = { matchedCount: 0, totalCount: 0 };
     updateHistorySymbolOptions([]);
     renderHistory(historyRows);
+    renderHistorySummary(null);
     renderChart(historyRows);
     historyNote.textContent = data.cleared
       ? "Local calculation history cleared"
@@ -957,6 +997,7 @@ loadSettings();
 renderSavedLists();
 setRunExportState();
 updateResultSummary([]);
+renderHistorySummary(null);
 updateFilteredHistoryLinks();
 loadStatus();
 loadUniverses();

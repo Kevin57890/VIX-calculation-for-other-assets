@@ -4,6 +4,15 @@ All notable project changes are summarized here.
 
 ## Unreleased
 
+## 1.5.0 - 2026-07-10
+
+- Added a filtered history analytics API for latest, previous, change, average,
+  low, high, and numeric sample counts.
+- Added a History Analytics summary strip to the web app so selected history
+  filters show trend context without exporting data.
+- Refreshed the GitHub README showcase screenshot for the expanded history
+  analysis workflow.
+
 ## 1.4.0 - 2026-07-09
 
 - Added filtered history CSV and JSON exports that respect the selected symbol

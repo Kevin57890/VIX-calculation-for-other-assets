@@ -641,6 +641,77 @@ def history_json_bytes(
     return json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
 
 
+def history_numeric_value(row: Dict[str, Any]) -> Optional[float]:
+    if history_status_bucket(row.get("status")) == "error":
+        return None
+    try:
+        value = float(str(row.get("asset_vix_30d") or "").strip())
+    except ValueError:
+        return None
+    if math.isnan(value) or math.isinf(value):
+        return None
+    return value
+
+
+def history_summary_payload(
+    path: Path = RECORDS_PATH,
+    limit: int = 500,
+    symbol: Optional[str] = None,
+    status: str = "__all__",
+) -> Dict[str, Any]:
+    payload = history_payload(path, limit, symbol, status)
+    points: List[Dict[str, Any]] = []
+    for row in payload["rows"]:
+        value = history_numeric_value(row)
+        if value is None:
+            continue
+        points.append(
+            {
+                "value": value,
+                "symbol": str(row.get("symbol") or "").upper(),
+                "recorded_at_utc": row.get("recorded_at_utc") or row.get("ts_utc") or "",
+                "status": row.get("status") or "",
+            }
+        )
+
+    values = [point["value"] for point in points]
+    latest = points[-1] if points else None
+    previous = points[-2] if len(points) >= 2 else None
+    change = (
+        latest["value"] - previous["value"]
+        if latest is not None and previous is not None
+        else None
+    )
+    if change is None:
+        trend = "flat"
+    elif abs(change) < 0.000001:
+        trend = "flat"
+    elif change > 0:
+        trend = "up"
+    else:
+        trend = "down"
+
+    return {
+        "ok": True,
+        "count": payload["count"],
+        "matchedCount": payload["matchedCount"],
+        "totalCount": payload["totalCount"],
+        "numericCount": len(values),
+        "latest": latest,
+        "previous": previous,
+        "change": round(change, 4) if change is not None else None,
+        "trend": trend,
+        "average": round(math.fsum(values) / len(values), 4) if values else None,
+        "low": round(min(values), 4) if values else None,
+        "high": round(max(values), 4) if values else None,
+        "filters": {
+            "limit": min(max(int(limit), 1), 500),
+            "symbol": symbol or "__all__",
+            "status": status or "__all__",
+        },
+    }
+
+
 def universes_payload(path: Path = UNIVERSE_PATH) -> Dict[str, Any]:
     try:
         universes = calc.load_symbol_universes(str(path))
@@ -849,6 +920,16 @@ class AssetVixHandler(BaseHTTPRequestHandler):
             limit, symbol, status = parse_history_query(parsed.query)
             try:
                 self.send_json(history_payload(RECORDS_PATH, limit, symbol, status))
+            except ValueError as exc:
+                self.send_json({"ok": False, "error": str(exc)}, status=400)
+            return
+
+        if parsed.path == "/api/history/summary":
+            limit, symbol, status = parse_history_query(parsed.query)
+            try:
+                self.send_json(
+                    history_summary_payload(RECORDS_PATH, limit, symbol, status)
+                )
             except ValueError as exc:
                 self.send_json({"ok": False, "error": str(exc)}, status=400)
             return

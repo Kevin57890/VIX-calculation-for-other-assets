@@ -549,7 +549,8 @@ textarea:focus {
   margin-bottom: 14px;
 }
 
-.chart-summary div {
+.chart-summary div,
+.history-summary div {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -557,7 +558,8 @@ textarea:focus {
   padding: 10px 12px;
 }
 
-.chart-summary span {
+.chart-summary span,
+.history-summary span {
   display: block;
   color: var(--muted);
   font-size: 11px;
@@ -565,7 +567,8 @@ textarea:focus {
   text-transform: uppercase;
 }
 
-.chart-summary strong {
+.chart-summary strong,
+.history-summary strong {
   display: block;
   margin-top: 5px;
   color: var(--text);
@@ -656,6 +659,25 @@ textarea:focus {
 .history-filters select {
   min-height: 36px;
   padding: 7px 10px;
+}
+
+.history-summary {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.history-summary .trend-up {
+  color: #177245;
+}
+
+.history-summary .trend-down {
+  color: #ba2f3a;
+}
+
+.history-summary .trend-flat {
+  color: var(--text);
 }
 
 .run-id {
@@ -761,6 +783,10 @@ tbody tr:hover {
   }
 
   .chart-summary {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .history-summary {
     grid-template-columns: 1fr 1fr;
   }
 

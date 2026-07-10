@@ -241,7 +241,7 @@ class ServerTokenTests(unittest.TestCase):
             )
 
             payload = json.loads(server.records_json_bytes(path))
-            self.assertEqual(payload["version"], "1.4.0")
+            self.assertEqual(payload["version"], "1.5.0")
             self.assertEqual(payload["count"], 1)
             self.assertEqual(payload["rows"][0]["symbol"], "SPY")
             self.assertIn("exported_at_utc", payload)
@@ -294,12 +294,66 @@ class ServerTokenTests(unittest.TestCase):
             self.assertEqual(rows[0]["reason"], "'=warn")
 
             payload = json.loads(server.history_json_bytes(path, limit=10, symbol="SPY", status="warn"))
-            self.assertEqual(payload["version"], "1.4.0")
+            self.assertEqual(payload["version"], "1.5.0")
             self.assertEqual(payload["count"], 1)
             self.assertEqual(payload["matchedCount"], 1)
             self.assertEqual(payload["totalCount"], 3)
             self.assertEqual(payload["filters"]["symbol"], "SPY")
             self.assertEqual(payload["filters"]["status"], "warn")
+
+    def test_history_summary_payload_reports_filtered_trend(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "calculations.csv"
+            server.calc.write_csv_rows(
+                str(path),
+                [
+                    {
+                        "recorded_at_utc": "2026-01-01T10:00:00+00:00",
+                        "symbol": "SPY",
+                        "status": "ok",
+                        "asset_vix_30d": 18.5,
+                    },
+                    {
+                        "recorded_at_utc": "2026-01-01T11:00:00+00:00",
+                        "symbol": "QQQ",
+                        "status": "error",
+                        "asset_vix_30d": "",
+                    },
+                    {
+                        "recorded_at_utc": "2026-01-01T12:00:00+00:00",
+                        "symbol": "SPY",
+                        "status": "stale_quotes",
+                        "asset_vix_30d": 21.25,
+                    },
+                ],
+            )
+
+            payload = server.history_summary_payload(
+                path,
+                limit=10,
+                symbol="SPY",
+                status="warn",
+            )
+
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["count"], 1)
+            self.assertEqual(payload["matchedCount"], 1)
+            self.assertEqual(payload["totalCount"], 3)
+            self.assertEqual(payload["numericCount"], 1)
+            self.assertEqual(payload["latest"]["symbol"], "SPY")
+            self.assertEqual(payload["latest"]["value"], 21.25)
+            self.assertIsNone(payload["previous"])
+            self.assertIsNone(payload["change"])
+            self.assertEqual(payload["trend"], "flat")
+            self.assertEqual(payload["average"], 21.25)
+            self.assertEqual(payload["low"], 21.25)
+            self.assertEqual(payload["high"], 21.25)
+
+            all_spy = server.history_summary_payload(path, limit=10, symbol="SPY")
+            self.assertEqual(all_spy["numericCount"], 2)
+            self.assertEqual(all_spy["change"], 2.75)
+            self.assertEqual(all_spy["trend"], "up")
+            self.assertEqual(all_spy["average"], 19.875)
 
     def test_universes_payload_returns_ordered_universes(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -432,7 +486,7 @@ class ServerTokenTests(unittest.TestCase):
         self.assertIn("Permissions-Policy:", headers)
         self.assertIn("Referrer-Policy: no-referrer", headers)
         self.assertIn("X-Content-Type-Options: nosniff", headers)
-        self.assertEqual(handler.version_string(), "AssetVIXLocal/1.4.0")
+        self.assertEqual(handler.version_string(), "AssetVIXLocal/1.5.0")
 
 
 if __name__ == "__main__":

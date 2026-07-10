@@ -24,8 +24,9 @@ prototyping rather than for publishing an official index.
 The preview uses sample values to show the local workflow: choose or save a
 symbol list, set quote-quality controls, calculate VIX-style 30-day implied
 volatility, review the run summary, export the current run, review per-symbol
-diagnostics, and export filtered recorded history. Actual calculations require
-your own MarketData.app token and live, delayed, or cached option-chain access.
+diagnostics, inspect filtered history analytics, and export filtered recorded
+history. Actual calculations require your own MarketData.app token and live,
+delayed, or cached option-chain access.
 
 Quick start:
 
@@ -74,6 +75,8 @@ Maintenance files:
 - CSV and JSON history exports with an in-app clear action
 - History filtering by symbol and result status
 - Server-side history API filters for symbol and status
+- Filtered history analytics for latest, change, average, range, and numeric
+  sample counts
 - Current-run CSV and JSON exports from the results table
 - Filtered history CSV and JSON exports from the selected history view
 - Current-run summary for OK, warning, error, and average 30-day values
@@ -365,7 +368,8 @@ record time. The chart can show all recorded symbols or one selected symbol. The
 the symbol and status controls to request filtered history from the local API.
 Use **Filtered CSV** or **Filtered JSON** to export only the current filtered
 history view. Use **Clear History** to remove the local record file after
-confirmation.
+confirmation. The history analytics strip summarizes the current filtered view
+with latest value, change, average, range, and usable numeric sample count.
 
 For one-off analysis, the **Results** table can export only the most recent
 calculation run as CSV or JSON without downloading the full history file. The
@@ -418,6 +422,8 @@ accidental long-running requests and unexpected API-credit usage.
   or JSON.
 - **History actions**: refresh, export all records, export filtered records, or
   clear local records.
+- **History Analytics**: summarizes the selected history view with latest,
+  change, average, range, and numeric record coverage.
 
 The browser remembers symbols, data mode, quality filters, and toggles locally
 between sessions. API tokens are not stored in browser storage.
