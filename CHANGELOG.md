@@ -7,6 +7,16 @@ All notable project changes are summarized here.
 - Reworked the GitHub README homepage so the formula section uses stable
   plain-text notation instead of Markdown math blocks.
 
+## 1.8.0 - 2026-07-13
+
+- Added a Volatility Scanner to rank the current calculation basket by 30-day
+  AssetVIX, including high/low values, basket spread, and deviation from the
+  basket average.
+- Added persistent result sorting by high-to-low volatility, low-to-high
+  volatility, or symbol.
+- Made scanner entries interactive so selecting one updates the detailed
+  result panel without running a new query.
+
 ## 1.7.0 - 2026-07-13
 
 - Added opt-in 5/15/30/60-minute auto refresh for local monitoring sessions.

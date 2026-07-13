@@ -289,6 +289,38 @@
             </table>
           </div>
 
+          <div class="scanner-wrap">
+            <div class="table-head scanner-head">
+              <div>
+                <h2>Volatility Scanner</h2>
+                <p id="scannerNote">Calculate a basket to compare cross-asset volatility</p>
+              </div>
+              <label class="result-sort-control">
+                Sort results
+                <select id="resultSortSelect">
+                  <option value="high">30D: high to low</option>
+                  <option value="low">30D: low to high</option>
+                  <option value="symbol">Symbol: A to Z</option>
+                </select>
+              </label>
+            </div>
+            <div class="scanner-summary">
+              <div>
+                <span>Highest</span>
+                <strong id="scannerHigh">--</strong>
+              </div>
+              <div>
+                <span>Lowest</span>
+                <strong id="scannerLow">--</strong>
+              </div>
+              <div>
+                <span>Basket spread</span>
+                <strong id="scannerSpread">--</strong>
+              </div>
+            </div>
+            <div id="scannerList" class="scanner-list" aria-live="polite"></div>
+          </div>
+
           <div class="chart-wrap">
             <div class="table-head chart-head">
               <div>

@@ -30,6 +30,12 @@ const queryButton = document.querySelector("#queryButton");
 const queryButtonLabel = document.querySelector("#queryButtonLabel");
 const resultsBody = document.querySelector("#resultsBody");
 const lastRun = document.querySelector("#lastRun");
+const resultSortSelect = document.querySelector("#resultSortSelect");
+const scannerNote = document.querySelector("#scannerNote");
+const scannerHigh = document.querySelector("#scannerHigh");
+const scannerLow = document.querySelector("#scannerLow");
+const scannerSpread = document.querySelector("#scannerSpread");
+const scannerList = document.querySelector("#scannerList");
 const downloadRunCsvButton = document.querySelector("#downloadRunCsvButton");
 const downloadRunJsonButton = document.querySelector("#downloadRunJsonButton");
 const summaryOk = document.querySelector("#summaryOk");
@@ -83,6 +89,7 @@ let autoRefreshDeadline = null;
 let queryInProgress = false;
 const HISTORY_FETCH_LIMIT = 500;
 const HISTORY_TABLE_LIMIT = 25;
+const SCANNER_LIST_LIMIT = 12;
 const ALL_SYMBOLS = "__all__";
 const SETTINGS_KEY = "assetvix.query-settings.v1";
 const CUSTOM_LISTS_KEY = "assetvix.custom-symbol-lists.v1";
@@ -124,6 +131,7 @@ const rememberedControls = [
   allowStaleInput,
   allowExtrapolationInput,
   autoRefreshSelect,
+  resultSortSelect,
 ];
 const chartColors = [
   "#0b8f83",
@@ -567,10 +575,95 @@ function updateMain(row) {
   mainRates.textContent = row.rates || "--";
 }
 
-function renderRows(rows) {
+function rowAssetVix(row) {
+  const value = parseAssetVix(row.asset_vix_30d);
+  return badgeClass(String(row.status || "")) === "error" ? null : value;
+}
+
+function sortedResultRows(rows) {
+  const sort = resultSortSelect.value;
+  return rows.slice().sort((left, right) => {
+    if (sort === "symbol") {
+      return String(left.symbol || "").localeCompare(String(right.symbol || ""));
+    }
+    const leftValue = rowAssetVix(left);
+    const rightValue = rowAssetVix(right);
+    if (leftValue === null && rightValue === null) return 0;
+    if (leftValue === null) return 1;
+    if (rightValue === null) return -1;
+    return sort === "low" ? leftValue - rightValue : rightValue - leftValue;
+  });
+}
+
+function scannerItems(rows) {
+  return rows
+    .map((row) => ({ row, value: rowAssetVix(row) }))
+    .filter((item) => item.value !== null)
+    .sort((left, right) => right.value - left.value);
+}
+
+function renderScanner(rows) {
+  const items = scannerItems(rows);
+  scannerList.innerHTML = "";
+  if (!items.length) {
+    scannerNote.textContent = rows.length
+      ? "No usable 30D values in this run"
+      : "Calculate a basket to compare cross-asset volatility";
+    scannerHigh.textContent = "--";
+    scannerLow.textContent = "--";
+    scannerSpread.textContent = "--";
+    scannerList.innerHTML = '<p class="scanner-empty">No ranked AssetVIX values yet</p>';
+    return;
+  }
+
+  const highest = items[0];
+  const lowest = items[items.length - 1];
+  const average = items.reduce((total, item) => total + item.value, 0) / items.length;
+  const spread = highest.value - lowest.value;
+  const maximum = highest.value || 1;
+  scannerNote.textContent = `${items.length} usable values · basket average ${formatValue(average)}`;
+  scannerHigh.textContent = `${highest.row.symbol} ${formatValue(highest.value)}`;
+  scannerLow.textContent = `${lowest.row.symbol} ${formatValue(lowest.value)}`;
+  scannerSpread.textContent = formatValue(spread);
+
+  for (const [index, item] of items.slice(0, SCANNER_LIST_LIMIT).entries()) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "scanner-row";
+    button.addEventListener("click", () => updateMain(item.row));
+
+    const rank = document.createElement("span");
+    rank.className = "scanner-rank";
+    rank.textContent = String(index + 1);
+    const symbol = document.createElement("strong");
+    symbol.textContent = item.row.symbol || "UNKNOWN";
+    const bar = document.createElement("span");
+    bar.className = "scanner-bar";
+    const fill = document.createElement("i");
+    fill.style.width = `${Math.max(5, (item.value / maximum) * 100)}%`;
+    bar.appendChild(fill);
+    const value = document.createElement("span");
+    value.className = "scanner-value";
+    value.textContent = formatValue(item.value);
+    const delta = document.createElement("span");
+    delta.className = item.value >= average ? "scanner-delta above" : "scanner-delta below";
+    delta.textContent = `${formatSignedValue(item.value - average)} vs avg`;
+    button.append(rank, symbol, bar, value, delta);
+    scannerList.appendChild(button);
+  }
+  if (items.length > SCANNER_LIST_LIMIT) {
+    const more = document.createElement("p");
+    more.className = "scanner-empty";
+    more.textContent = `${items.length - SCANNER_LIST_LIMIT} additional symbols remain in the results table`;
+    scannerList.appendChild(more);
+  }
+}
+
+function renderRows(rows, { markRun = true } = {}) {
   latestRows = rows.slice();
   setRunExportState();
   updateResultSummary(rows);
+  renderScanner(rows);
   resultsBody.innerHTML = "";
   if (!rows.length) {
     resultsBody.innerHTML = '<tr><td colspan="6" class="empty">No results</td></tr>';
@@ -578,7 +671,7 @@ function renderRows(rows) {
     return;
   }
 
-  for (const row of rows) {
+  for (const row of sortedResultRows(rows)) {
     const tr = document.createElement("tr");
     const quoteAge =
       row.max_quote_age_minutes === null || row.max_quote_age_minutes === undefined
@@ -597,7 +690,7 @@ function renderRows(rows) {
   }
 
   updateMain(rows.find((row) => row.status === "ok") || rows[0]);
-  lastRun.textContent = `Last run: ${new Date().toLocaleString()}`;
+  if (markRun) lastRun.textContent = `Last run: ${new Date().toLocaleString()}`;
 }
 
 function renderHistory(rows) {
@@ -1096,6 +1189,7 @@ autoRefreshSelect.addEventListener("change", () => {
   saveSettings();
   scheduleAutoRefresh();
 });
+resultSortSelect.addEventListener("change", () => renderRows(latestRows, { markRun: false }));
 chartSymbolSelect.addEventListener("change", () => renderChart(historyRows));
 window.addEventListener("resize", () => renderChart(historyRows));
 document.addEventListener("visibilitychange", () => {
