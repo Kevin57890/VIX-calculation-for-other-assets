@@ -43,10 +43,15 @@ const downloadFilteredHistoryCsvLink = document.querySelector("#downloadFiltered
 const downloadFilteredHistoryJsonLink = document.querySelector("#downloadFilteredHistoryJsonLink");
 const historySymbolFilter = document.querySelector("#historySymbolFilter");
 const historyStatusFilter = document.querySelector("#historyStatusFilter");
+const historyWindowFilter = document.querySelector("#historyWindowFilter");
 const historyLatest = document.querySelector("#historyLatest");
 const historyChange = document.querySelector("#historyChange");
+const historyChangePercent = document.querySelector("#historyChangePercent");
 const historyAverage = document.querySelector("#historyAverage");
+const historyMedian = document.querySelector("#historyMedian");
 const historyRange = document.querySelector("#historyRange");
+const historyPercentile = document.querySelector("#historyPercentile");
+const historyRegime = document.querySelector("#historyRegime");
 const historyNumeric = document.querySelector("#historyNumeric");
 const chartSymbolSelect = document.querySelector("#chartSymbolSelect");
 const chartNote = document.querySelector("#chartNote");
@@ -403,6 +408,13 @@ function formatSignedValue(value) {
   return `${numeric > 0 ? "+" : ""}${numeric.toFixed(2)}`;
 }
 
+function formatSignedPercent(value) {
+  if (value === null || value === undefined || value === "") return "--";
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "--";
+  return `${number > 0 ? "+" : ""}${number.toFixed(2)}%`;
+}
+
 function formatDateTime(value) {
   if (!value) return "--";
   const date = new Date(value);
@@ -557,11 +569,22 @@ function renderHistorySummary(summary) {
   historyChange.textContent = formatSignedValue(summary?.change);
   historyChange.classList.remove("trend-up", "trend-down", "trend-flat");
   historyChange.classList.add(`trend-${summary?.trend || "flat"}`);
+  historyChangePercent.textContent = formatSignedPercent(summary?.changePercent);
+  historyChangePercent.classList.remove("trend-up", "trend-down", "trend-flat");
+  historyChangePercent.classList.add(`trend-${summary?.trend || "flat"}`);
   historyAverage.textContent = formatValue(summary?.average);
+  historyMedian.textContent = formatValue(summary?.median);
   historyRange.textContent =
     summary?.low === null || summary?.low === undefined
       ? "--"
       : `${formatValue(summary.low)} - ${formatValue(summary.high)}`;
+  historyPercentile.textContent =
+    summary?.percentile === null || summary?.percentile === undefined
+      ? "--"
+      : `${Number(summary.percentile).toFixed(1)}th`;
+  const regime = String(summary?.regime || "unknown");
+  historyRegime.textContent = regime === "unknown" ? "--" : regime;
+  historyRegime.className = `regime regime-${regime}`;
   const numericCount = Number(summary?.numericCount ?? 0);
   const matchedCount = Number(summary?.matchedCount ?? 0);
   historyNumeric.textContent = matchedCount ? `${numericCount}/${matchedCount}` : "--";
@@ -796,8 +819,10 @@ function historyFilterParams() {
   const params = new URLSearchParams({ limit: String(HISTORY_FETCH_LIMIT) });
   const selectedSymbol = historySymbolFilter.value || ALL_SYMBOLS;
   const selectedStatus = historyStatusFilter.value || ALL_SYMBOLS;
+  const windowDays = historyWindowFilter.value || "0";
   if (selectedSymbol !== ALL_SYMBOLS) params.set("symbol", selectedSymbol);
   if (selectedStatus !== ALL_SYMBOLS) params.set("status", selectedStatus);
+  if (windowDays !== "0") params.set("windowDays", windowDays);
   return params;
 }
 
@@ -986,6 +1011,7 @@ refreshHistoryButton.addEventListener("click", loadHistory);
 clearHistoryButton.addEventListener("click", clearHistory);
 historySymbolFilter.addEventListener("change", loadHistory);
 historyStatusFilter.addEventListener("change", loadHistory);
+historyWindowFilter.addEventListener("change", loadHistory);
 chartSymbolSelect.addEventListener("change", () => renderChart(historyRows));
 window.addEventListener("resize", () => renderChart(historyRows));
 tokenInput.addEventListener("keydown", (event) => {

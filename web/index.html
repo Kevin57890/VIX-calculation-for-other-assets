@@ -317,7 +317,7 @@
             <div class="table-head">
               <div>
                 <h2>History</h2>
-                <p id="historyNote">Latest recorded calculations</p>
+                <p id="historyNote">Monitor recorded calculations and volatility regime</p>
               </div>
               <div class="history-actions">
                 <a id="downloadRecordsLink" class="link-button" href="/api/records.csv" download>
@@ -353,6 +353,16 @@
             </div>
             <div class="history-filters">
               <label>
+                Window
+                <select id="historyWindowFilter">
+                  <option value="0">All records</option>
+                  <option value="7">Last 7 days</option>
+                  <option value="30" selected>Last 30 days</option>
+                  <option value="90">Last 90 days</option>
+                  <option value="365">Last 12 months</option>
+                </select>
+              </label>
+              <label>
                 Symbol
                 <select id="historySymbolFilter">
                   <option value="__all__">All</option>
@@ -378,12 +388,28 @@
                 <strong id="historyChange">--</strong>
               </div>
               <div>
+                <span>Change %</span>
+                <strong id="historyChangePercent">--</strong>
+              </div>
+              <div>
                 <span>Average</span>
                 <strong id="historyAverage">--</strong>
               </div>
               <div>
+                <span>Median</span>
+                <strong id="historyMedian">--</strong>
+              </div>
+              <div>
                 <span>Range</span>
                 <strong id="historyRange">--</strong>
+              </div>
+              <div>
+                <span>Percentile</span>
+                <strong id="historyPercentile">--</strong>
+              </div>
+              <div>
+                <span>Regime</span>
+                <strong id="historyRegime">--</strong>
               </div>
               <div>
                 <span>Numeric</span>
