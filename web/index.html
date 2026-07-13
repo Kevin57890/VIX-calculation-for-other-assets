@@ -176,6 +176,20 @@
             </label>
           </section>
 
+          <section class="monitoring-control">
+            <label for="autoRefreshSelect">Auto refresh</label>
+            <select id="autoRefreshSelect">
+              <option value="0">Off — manual only</option>
+              <option value="5">Every 5 minutes</option>
+              <option value="15">Every 15 minutes</option>
+              <option value="30">Every 30 minutes</option>
+              <option value="60">Every hour</option>
+            </select>
+            <p id="autoRefreshStatus" class="monitoring-note" role="status" aria-live="polite">
+              Manual refresh only
+            </p>
+          </section>
+
           <button id="queryButton" class="primary-button">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="m21 21-4.3-4.3" />

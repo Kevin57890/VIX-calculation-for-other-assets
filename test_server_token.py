@@ -241,7 +241,7 @@ class ServerTokenTests(unittest.TestCase):
             )
 
             payload = json.loads(server.records_json_bytes(path))
-            self.assertEqual(payload["version"], "1.6.0")
+            self.assertEqual(payload["version"], "1.7.0")
             self.assertEqual(payload["count"], 1)
             self.assertEqual(payload["rows"][0]["symbol"], "SPY")
             self.assertIn("exported_at_utc", payload)
@@ -294,7 +294,7 @@ class ServerTokenTests(unittest.TestCase):
             self.assertEqual(rows[0]["reason"], "'=warn")
 
             payload = json.loads(server.history_json_bytes(path, limit=10, symbol="SPY", status="warn"))
-            self.assertEqual(payload["version"], "1.6.0")
+            self.assertEqual(payload["version"], "1.7.0")
             self.assertEqual(payload["count"], 1)
             self.assertEqual(payload["matchedCount"], 1)
             self.assertEqual(payload["totalCount"], 3)
@@ -529,7 +529,7 @@ class ServerTokenTests(unittest.TestCase):
         self.assertIn("Permissions-Policy:", headers)
         self.assertIn("Referrer-Policy: no-referrer", headers)
         self.assertIn("X-Content-Type-Options: nosniff", headers)
-        self.assertEqual(handler.version_string(), "AssetVIXLocal/1.6.0")
+        self.assertEqual(handler.version_string(), "AssetVIXLocal/1.7.0")
 
 
 if __name__ == "__main__":

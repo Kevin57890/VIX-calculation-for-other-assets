@@ -353,6 +353,34 @@ textarea:focus {
   accent-color: var(--accent);
 }
 
+.monitoring-control {
+  padding: 12px;
+  border: 1px solid rgba(11, 143, 131, 0.22);
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, rgba(11, 143, 131, 0.09), #fbfcfc 62%);
+}
+
+.monitoring-control select {
+  margin-top: 8px;
+}
+
+.monitoring-note {
+  min-height: 18px;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.monitoring-note[data-state="scheduled"] {
+  color: var(--accent-dark);
+}
+
+.monitoring-note[data-state="running"] {
+  color: var(--warning);
+}
+
 .primary-button {
   display: inline-flex;
   align-items: center;

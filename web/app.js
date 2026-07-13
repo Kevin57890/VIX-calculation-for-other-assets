@@ -24,6 +24,8 @@ const spreadInput = document.querySelector("#spreadInput");
 const delayInput = document.querySelector("#delayInput");
 const allowStaleInput = document.querySelector("#allowStaleInput");
 const allowExtrapolationInput = document.querySelector("#allowExtrapolationInput");
+const autoRefreshSelect = document.querySelector("#autoRefreshSelect");
+const autoRefreshStatus = document.querySelector("#autoRefreshStatus");
 const queryButton = document.querySelector("#queryButton");
 const queryButtonLabel = document.querySelector("#queryButtonLabel");
 const resultsBody = document.querySelector("#resultsBody");
@@ -75,6 +77,10 @@ let historyRows = [];
 let historyMeta = { matchedCount: 0, totalCount: 0 };
 let latestRows = [];
 let appVersion = "";
+let autoRefreshTimer = null;
+let autoRefreshTicker = null;
+let autoRefreshDeadline = null;
+let queryInProgress = false;
 const HISTORY_FETCH_LIMIT = 500;
 const HISTORY_TABLE_LIMIT = 25;
 const ALL_SYMBOLS = "__all__";
@@ -117,6 +123,7 @@ const rememberedControls = [
   delayInput,
   allowStaleInput,
   allowExtrapolationInput,
+  autoRefreshSelect,
 ];
 const chartColors = [
   "#0b8f83",
@@ -149,6 +156,68 @@ function setTokenStatus(configured, source, preview, formatOk = true, formatReas
     : configured
       ? `Current token cannot be used: ${formatReason || "format error"}`
     : "Save a MarketData token before running a query.";
+  if (!usable) clearAutoRefresh("Auto refresh needs a valid token");
+}
+
+function autoRefreshMinutes() {
+  const minutes = Number(autoRefreshSelect.value);
+  return [5, 15, 30, 60].includes(minutes) ? minutes : 0;
+}
+
+function formatCountdown(milliseconds) {
+  const seconds = Math.max(0, Math.ceil(milliseconds / 1000));
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function setAutoRefreshStatus(message, state = "idle") {
+  autoRefreshStatus.textContent = message;
+  autoRefreshStatus.dataset.state = state;
+}
+
+function clearAutoRefresh(message = "") {
+  if (autoRefreshTimer !== null) window.clearTimeout(autoRefreshTimer);
+  if (autoRefreshTicker !== null) window.clearInterval(autoRefreshTicker);
+  autoRefreshTimer = null;
+  autoRefreshTicker = null;
+  autoRefreshDeadline = null;
+  if (message) {
+    setAutoRefreshStatus(message, "idle");
+  }
+}
+
+function updateAutoRefreshCountdown() {
+  if (!autoRefreshDeadline) return;
+  const remaining = autoRefreshDeadline - Date.now();
+  if (remaining <= 0) {
+    setAutoRefreshStatus("Refreshing now…", "running");
+    return;
+  }
+  setAutoRefreshStatus(`Next refresh in ${formatCountdown(remaining)}`, "scheduled");
+}
+
+function scheduleAutoRefresh() {
+  clearAutoRefresh();
+  const minutes = autoRefreshMinutes();
+  if (!minutes) {
+    setAutoRefreshStatus("Manual refresh only", "idle");
+    return;
+  }
+  if (!tokenConfigured) {
+    setAutoRefreshStatus("Auto refresh needs a valid token", "idle");
+    return;
+  }
+  if (!latestRows.length) {
+    setAutoRefreshStatus("Click Calculate to start monitoring", "idle");
+    return;
+  }
+  autoRefreshDeadline = Date.now() + minutes * 60 * 1000;
+  updateAutoRefreshCountdown();
+  autoRefreshTicker = window.setInterval(updateAutoRefreshCountdown, 1000);
+  autoRefreshTimer = window.setTimeout(() => {
+    clearAutoRefresh();
+    runQuery({ automatic: true });
+  }, minutes * 60 * 1000);
 }
 
 function saveSettings() {
@@ -359,6 +428,7 @@ async function loadStatus() {
     data.tokenFormatOk,
     data.tokenFormatReason
   );
+  scheduleAutoRefresh();
 }
 
 async function loadUniverses() {
@@ -920,13 +990,21 @@ async function clearHistory() {
   }
 }
 
-async function runQuery() {
+async function runQuery({ automatic = false } = {}) {
   if (!tokenConfigured) {
+    clearAutoRefresh("Auto refresh needs a valid token");
     openTokenPanel();
     return;
   }
+  if (queryInProgress) return;
+  clearAutoRefresh();
+  queryInProgress = true;
   queryButton.disabled = true;
   queryButtonLabel.textContent = "Calculating...";
+  setAutoRefreshStatus(
+    automatic ? "Automatic refresh is running…" : "Calculation is running…",
+    "running"
+  );
   saveSettings();
   try {
     const data = await api("/api/query", buildQueryPayload());
@@ -943,8 +1021,10 @@ async function runQuery() {
       reason: error.message,
     });
   } finally {
+    queryInProgress = false;
     queryButton.disabled = false;
     queryButtonLabel.textContent = "Calculate";
+    scheduleAutoRefresh();
   }
 }
 
@@ -1012,8 +1092,19 @@ clearHistoryButton.addEventListener("click", clearHistory);
 historySymbolFilter.addEventListener("change", loadHistory);
 historyStatusFilter.addEventListener("change", loadHistory);
 historyWindowFilter.addEventListener("change", loadHistory);
+autoRefreshSelect.addEventListener("change", () => {
+  saveSettings();
+  scheduleAutoRefresh();
+});
 chartSymbolSelect.addEventListener("change", () => renderChart(historyRows));
 window.addEventListener("resize", () => renderChart(historyRows));
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    clearAutoRefresh("Auto refresh paused while this tab is hidden");
+  } else if (autoRefreshMinutes() && latestRows.length) {
+    scheduleAutoRefresh();
+  }
+});
 tokenInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") saveToken();
 });
@@ -1025,6 +1116,7 @@ setRunExportState();
 updateResultSummary([]);
 renderHistorySummary(null);
 updateFilteredHistoryLinks();
+scheduleAutoRefresh();
 loadStatus();
 loadUniverses();
 loadHistory();

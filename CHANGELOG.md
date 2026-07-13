@@ -7,6 +7,14 @@ All notable project changes are summarized here.
 - Reworked the GitHub README homepage so the formula section uses stable
   plain-text notation instead of Markdown math blocks.
 
+## 1.7.0 - 2026-07-13
+
+- Added opt-in 5/15/30/60-minute auto refresh for local monitoring sessions.
+- Added a visible next-run countdown and explicit running/paused states.
+- Paused auto refresh when the app tab is hidden and resumed scheduling when it
+  becomes visible again, avoiding background token and request consumption.
+- Refreshed the controls panel with a dedicated monitoring card.
+
 ## 1.6.0 - 2026-07-12
 
 - Added rolling 7-day, 30-day, 90-day, and 12-month windows to history,

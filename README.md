@@ -77,6 +77,8 @@ python3 asset_vix.py --symbols SPY,QQQ --mode delayed --json --fail-on-non-ok
   monitoring and matching filtered exports
 - History median, period-over-period percentage change, percentile rank, and
   low/normal/high volatility-regime context
+- Optional 5/15/30/60-minute auto refresh for page-open monitoring, with a
+  next-run countdown and automatic pause when the browser tab is hidden
 - Current-run CSV and JSON exports from the results table
 - Filtered history CSV and JSON exports from the selected history view
 - Current-run summary for OK, warning, error, and average 30-day values
