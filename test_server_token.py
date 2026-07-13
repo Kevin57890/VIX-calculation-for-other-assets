@@ -241,7 +241,7 @@ class ServerTokenTests(unittest.TestCase):
             )
 
             payload = json.loads(server.records_json_bytes(path))
-            self.assertEqual(payload["version"], "1.5.0")
+            self.assertEqual(payload["version"], "1.8.0")
             self.assertEqual(payload["count"], 1)
             self.assertEqual(payload["rows"][0]["symbol"], "SPY")
             self.assertIn("exported_at_utc", payload)
@@ -294,7 +294,7 @@ class ServerTokenTests(unittest.TestCase):
             self.assertEqual(rows[0]["reason"], "'=warn")
 
             payload = json.loads(server.history_json_bytes(path, limit=10, symbol="SPY", status="warn"))
-            self.assertEqual(payload["version"], "1.5.0")
+            self.assertEqual(payload["version"], "1.8.0")
             self.assertEqual(payload["count"], 1)
             self.assertEqual(payload["matchedCount"], 1)
             self.assertEqual(payload["totalCount"], 3)
@@ -354,6 +354,49 @@ class ServerTokenTests(unittest.TestCase):
             self.assertEqual(all_spy["change"], 2.75)
             self.assertEqual(all_spy["trend"], "up")
             self.assertEqual(all_spy["average"], 19.875)
+            self.assertEqual(all_spy["median"], 19.875)
+            self.assertEqual(all_spy["percentile"], 100.0)
+            self.assertEqual(all_spy["regime"], "high")
+
+    def test_history_window_filters_records_and_rejects_invalid_windows(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "calculations.csv"
+            server.calc.write_csv_rows(
+                str(path),
+                [
+                    {
+                        "recorded_at_utc": "2026-06-01T10:00:00+00:00",
+                        "symbol": "SPY",
+                        "status": "ok",
+                        "asset_vix_30d": 17.0,
+                    },
+                    {
+                        "recorded_at_utc": "2026-07-09T10:00:00+00:00",
+                        "symbol": "SPY",
+                        "status": "ok",
+                        "asset_vix_30d": 21.0,
+                    },
+                    {
+                        "recorded_at_utc": "2026-07-11T10:00:00+00:00",
+                        "symbol": "QQQ",
+                        "status": "ok",
+                        "asset_vix_30d": 24.0,
+                    },
+                ],
+            )
+
+            payload = server.history_payload(
+                path,
+                limit=10,
+                window_days=7,
+                now=server.dt.datetime(2026, 7, 12, 12, tzinfo=server.dt.timezone.utc),
+            )
+            self.assertEqual(payload["windowDays"], 7)
+            self.assertEqual(payload["matchedCount"], 2)
+            self.assertEqual([row["symbol"] for row in payload["rows"]], ["SPY", "QQQ"])
+
+            with self.assertRaisesRegex(ValueError, "windowDays must be one of"):
+                server.history_payload(path, window_days=14)
 
     def test_universes_payload_returns_ordered_universes(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -486,7 +529,7 @@ class ServerTokenTests(unittest.TestCase):
         self.assertIn("Permissions-Policy:", headers)
         self.assertIn("Referrer-Policy: no-referrer", headers)
         self.assertIn("X-Content-Type-Options: nosniff", headers)
-        self.assertEqual(handler.version_string(), "AssetVIXLocal/1.5.0")
+        self.assertEqual(handler.version_string(), "AssetVIXLocal/1.8.0")
 
 
 if __name__ == "__main__":

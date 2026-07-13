@@ -7,6 +7,34 @@ All notable project changes are summarized here.
 - Reworked the GitHub README homepage so the formula section uses stable
   plain-text notation instead of Markdown math blocks.
 
+## 1.8.0 - 2026-07-13
+
+- Added a Volatility Scanner to rank the current calculation basket by 30-day
+  AssetVIX, including high/low values, basket spread, and deviation from the
+  basket average.
+- Added persistent result sorting by high-to-low volatility, low-to-high
+  volatility, or symbol.
+- Made scanner entries interactive so selecting one updates the detailed
+  result panel without running a new query.
+
+## 1.7.0 - 2026-07-13
+
+- Added opt-in 5/15/30/60-minute auto refresh for local monitoring sessions.
+- Added a visible next-run countdown and explicit running/paused states.
+- Paused auto refresh when the app tab is hidden and resumed scheduling when it
+  becomes visible again, avoiding background token and request consumption.
+- Refreshed the controls panel with a dedicated monitoring card.
+
+## 1.6.0 - 2026-07-12
+
+- Added rolling 7-day, 30-day, 90-day, and 12-month windows to history,
+  time-series data, and filtered history exports.
+- Added median, period-over-period percentage change, current percentile, and
+  low/normal/high regime labels to history analytics.
+- Redesigned the History panel as a monitoring dashboard with an explicit time
+  window selector and expanded analytics cards.
+- Added regression coverage for rolling-window filtering and regime analytics.
+
 ## 1.5.0 - 2026-07-10
 
 - Added a filtered history analytics API for latest, previous, change, average,

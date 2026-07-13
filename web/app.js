@@ -24,10 +24,18 @@ const spreadInput = document.querySelector("#spreadInput");
 const delayInput = document.querySelector("#delayInput");
 const allowStaleInput = document.querySelector("#allowStaleInput");
 const allowExtrapolationInput = document.querySelector("#allowExtrapolationInput");
+const autoRefreshSelect = document.querySelector("#autoRefreshSelect");
+const autoRefreshStatus = document.querySelector("#autoRefreshStatus");
 const queryButton = document.querySelector("#queryButton");
 const queryButtonLabel = document.querySelector("#queryButtonLabel");
 const resultsBody = document.querySelector("#resultsBody");
 const lastRun = document.querySelector("#lastRun");
+const resultSortSelect = document.querySelector("#resultSortSelect");
+const scannerNote = document.querySelector("#scannerNote");
+const scannerHigh = document.querySelector("#scannerHigh");
+const scannerLow = document.querySelector("#scannerLow");
+const scannerSpread = document.querySelector("#scannerSpread");
+const scannerList = document.querySelector("#scannerList");
 const downloadRunCsvButton = document.querySelector("#downloadRunCsvButton");
 const downloadRunJsonButton = document.querySelector("#downloadRunJsonButton");
 const summaryOk = document.querySelector("#summaryOk");
@@ -43,10 +51,15 @@ const downloadFilteredHistoryCsvLink = document.querySelector("#downloadFiltered
 const downloadFilteredHistoryJsonLink = document.querySelector("#downloadFilteredHistoryJsonLink");
 const historySymbolFilter = document.querySelector("#historySymbolFilter");
 const historyStatusFilter = document.querySelector("#historyStatusFilter");
+const historyWindowFilter = document.querySelector("#historyWindowFilter");
 const historyLatest = document.querySelector("#historyLatest");
 const historyChange = document.querySelector("#historyChange");
+const historyChangePercent = document.querySelector("#historyChangePercent");
 const historyAverage = document.querySelector("#historyAverage");
+const historyMedian = document.querySelector("#historyMedian");
 const historyRange = document.querySelector("#historyRange");
+const historyPercentile = document.querySelector("#historyPercentile");
+const historyRegime = document.querySelector("#historyRegime");
 const historyNumeric = document.querySelector("#historyNumeric");
 const chartSymbolSelect = document.querySelector("#chartSymbolSelect");
 const chartNote = document.querySelector("#chartNote");
@@ -70,8 +83,13 @@ let historyRows = [];
 let historyMeta = { matchedCount: 0, totalCount: 0 };
 let latestRows = [];
 let appVersion = "";
+let autoRefreshTimer = null;
+let autoRefreshTicker = null;
+let autoRefreshDeadline = null;
+let queryInProgress = false;
 const HISTORY_FETCH_LIMIT = 500;
 const HISTORY_TABLE_LIMIT = 25;
+const SCANNER_LIST_LIMIT = 12;
 const ALL_SYMBOLS = "__all__";
 const SETTINGS_KEY = "assetvix.query-settings.v1";
 const CUSTOM_LISTS_KEY = "assetvix.custom-symbol-lists.v1";
@@ -112,6 +130,8 @@ const rememberedControls = [
   delayInput,
   allowStaleInput,
   allowExtrapolationInput,
+  autoRefreshSelect,
+  resultSortSelect,
 ];
 const chartColors = [
   "#0b8f83",
@@ -144,6 +164,68 @@ function setTokenStatus(configured, source, preview, formatOk = true, formatReas
     : configured
       ? `Current token cannot be used: ${formatReason || "format error"}`
     : "Save a MarketData token before running a query.";
+  if (!usable) clearAutoRefresh("Auto refresh needs a valid token");
+}
+
+function autoRefreshMinutes() {
+  const minutes = Number(autoRefreshSelect.value);
+  return [5, 15, 30, 60].includes(minutes) ? minutes : 0;
+}
+
+function formatCountdown(milliseconds) {
+  const seconds = Math.max(0, Math.ceil(milliseconds / 1000));
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function setAutoRefreshStatus(message, state = "idle") {
+  autoRefreshStatus.textContent = message;
+  autoRefreshStatus.dataset.state = state;
+}
+
+function clearAutoRefresh(message = "") {
+  if (autoRefreshTimer !== null) window.clearTimeout(autoRefreshTimer);
+  if (autoRefreshTicker !== null) window.clearInterval(autoRefreshTicker);
+  autoRefreshTimer = null;
+  autoRefreshTicker = null;
+  autoRefreshDeadline = null;
+  if (message) {
+    setAutoRefreshStatus(message, "idle");
+  }
+}
+
+function updateAutoRefreshCountdown() {
+  if (!autoRefreshDeadline) return;
+  const remaining = autoRefreshDeadline - Date.now();
+  if (remaining <= 0) {
+    setAutoRefreshStatus("Refreshing now…", "running");
+    return;
+  }
+  setAutoRefreshStatus(`Next refresh in ${formatCountdown(remaining)}`, "scheduled");
+}
+
+function scheduleAutoRefresh() {
+  clearAutoRefresh();
+  const minutes = autoRefreshMinutes();
+  if (!minutes) {
+    setAutoRefreshStatus("Manual refresh only", "idle");
+    return;
+  }
+  if (!tokenConfigured) {
+    setAutoRefreshStatus("Auto refresh needs a valid token", "idle");
+    return;
+  }
+  if (!latestRows.length) {
+    setAutoRefreshStatus("Click Calculate to start monitoring", "idle");
+    return;
+  }
+  autoRefreshDeadline = Date.now() + minutes * 60 * 1000;
+  updateAutoRefreshCountdown();
+  autoRefreshTicker = window.setInterval(updateAutoRefreshCountdown, 1000);
+  autoRefreshTimer = window.setTimeout(() => {
+    clearAutoRefresh();
+    runQuery({ automatic: true });
+  }, minutes * 60 * 1000);
 }
 
 function saveSettings() {
@@ -354,6 +436,7 @@ async function loadStatus() {
     data.tokenFormatOk,
     data.tokenFormatReason
   );
+  scheduleAutoRefresh();
 }
 
 async function loadUniverses() {
@@ -401,6 +484,13 @@ function formatSignedValue(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return String(value);
   return `${numeric > 0 ? "+" : ""}${numeric.toFixed(2)}`;
+}
+
+function formatSignedPercent(value) {
+  if (value === null || value === undefined || value === "") return "--";
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "--";
+  return `${number > 0 ? "+" : ""}${number.toFixed(2)}%`;
 }
 
 function formatDateTime(value) {
@@ -485,10 +575,95 @@ function updateMain(row) {
   mainRates.textContent = row.rates || "--";
 }
 
-function renderRows(rows) {
+function rowAssetVix(row) {
+  const value = parseAssetVix(row.asset_vix_30d);
+  return badgeClass(String(row.status || "")) === "error" ? null : value;
+}
+
+function sortedResultRows(rows) {
+  const sort = resultSortSelect.value;
+  return rows.slice().sort((left, right) => {
+    if (sort === "symbol") {
+      return String(left.symbol || "").localeCompare(String(right.symbol || ""));
+    }
+    const leftValue = rowAssetVix(left);
+    const rightValue = rowAssetVix(right);
+    if (leftValue === null && rightValue === null) return 0;
+    if (leftValue === null) return 1;
+    if (rightValue === null) return -1;
+    return sort === "low" ? leftValue - rightValue : rightValue - leftValue;
+  });
+}
+
+function scannerItems(rows) {
+  return rows
+    .map((row) => ({ row, value: rowAssetVix(row) }))
+    .filter((item) => item.value !== null)
+    .sort((left, right) => right.value - left.value);
+}
+
+function renderScanner(rows) {
+  const items = scannerItems(rows);
+  scannerList.innerHTML = "";
+  if (!items.length) {
+    scannerNote.textContent = rows.length
+      ? "No usable 30D values in this run"
+      : "Calculate a basket to compare cross-asset volatility";
+    scannerHigh.textContent = "--";
+    scannerLow.textContent = "--";
+    scannerSpread.textContent = "--";
+    scannerList.innerHTML = '<p class="scanner-empty">No ranked AssetVIX values yet</p>';
+    return;
+  }
+
+  const highest = items[0];
+  const lowest = items[items.length - 1];
+  const average = items.reduce((total, item) => total + item.value, 0) / items.length;
+  const spread = highest.value - lowest.value;
+  const maximum = highest.value || 1;
+  scannerNote.textContent = `${items.length} usable values · basket average ${formatValue(average)}`;
+  scannerHigh.textContent = `${highest.row.symbol} ${formatValue(highest.value)}`;
+  scannerLow.textContent = `${lowest.row.symbol} ${formatValue(lowest.value)}`;
+  scannerSpread.textContent = formatValue(spread);
+
+  for (const [index, item] of items.slice(0, SCANNER_LIST_LIMIT).entries()) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "scanner-row";
+    button.addEventListener("click", () => updateMain(item.row));
+
+    const rank = document.createElement("span");
+    rank.className = "scanner-rank";
+    rank.textContent = String(index + 1);
+    const symbol = document.createElement("strong");
+    symbol.textContent = item.row.symbol || "UNKNOWN";
+    const bar = document.createElement("span");
+    bar.className = "scanner-bar";
+    const fill = document.createElement("i");
+    fill.style.width = `${Math.max(5, (item.value / maximum) * 100)}%`;
+    bar.appendChild(fill);
+    const value = document.createElement("span");
+    value.className = "scanner-value";
+    value.textContent = formatValue(item.value);
+    const delta = document.createElement("span");
+    delta.className = item.value >= average ? "scanner-delta above" : "scanner-delta below";
+    delta.textContent = `${formatSignedValue(item.value - average)} vs avg`;
+    button.append(rank, symbol, bar, value, delta);
+    scannerList.appendChild(button);
+  }
+  if (items.length > SCANNER_LIST_LIMIT) {
+    const more = document.createElement("p");
+    more.className = "scanner-empty";
+    more.textContent = `${items.length - SCANNER_LIST_LIMIT} additional symbols remain in the results table`;
+    scannerList.appendChild(more);
+  }
+}
+
+function renderRows(rows, { markRun = true } = {}) {
   latestRows = rows.slice();
   setRunExportState();
   updateResultSummary(rows);
+  renderScanner(rows);
   resultsBody.innerHTML = "";
   if (!rows.length) {
     resultsBody.innerHTML = '<tr><td colspan="6" class="empty">No results</td></tr>';
@@ -496,7 +671,7 @@ function renderRows(rows) {
     return;
   }
 
-  for (const row of rows) {
+  for (const row of sortedResultRows(rows)) {
     const tr = document.createElement("tr");
     const quoteAge =
       row.max_quote_age_minutes === null || row.max_quote_age_minutes === undefined
@@ -515,7 +690,7 @@ function renderRows(rows) {
   }
 
   updateMain(rows.find((row) => row.status === "ok") || rows[0]);
-  lastRun.textContent = `Last run: ${new Date().toLocaleString()}`;
+  if (markRun) lastRun.textContent = `Last run: ${new Date().toLocaleString()}`;
 }
 
 function renderHistory(rows) {
@@ -557,11 +732,22 @@ function renderHistorySummary(summary) {
   historyChange.textContent = formatSignedValue(summary?.change);
   historyChange.classList.remove("trend-up", "trend-down", "trend-flat");
   historyChange.classList.add(`trend-${summary?.trend || "flat"}`);
+  historyChangePercent.textContent = formatSignedPercent(summary?.changePercent);
+  historyChangePercent.classList.remove("trend-up", "trend-down", "trend-flat");
+  historyChangePercent.classList.add(`trend-${summary?.trend || "flat"}`);
   historyAverage.textContent = formatValue(summary?.average);
+  historyMedian.textContent = formatValue(summary?.median);
   historyRange.textContent =
     summary?.low === null || summary?.low === undefined
       ? "--"
       : `${formatValue(summary.low)} - ${formatValue(summary.high)}`;
+  historyPercentile.textContent =
+    summary?.percentile === null || summary?.percentile === undefined
+      ? "--"
+      : `${Number(summary.percentile).toFixed(1)}th`;
+  const regime = String(summary?.regime || "unknown");
+  historyRegime.textContent = regime === "unknown" ? "--" : regime;
+  historyRegime.className = `regime regime-${regime}`;
   const numericCount = Number(summary?.numericCount ?? 0);
   const matchedCount = Number(summary?.matchedCount ?? 0);
   historyNumeric.textContent = matchedCount ? `${numericCount}/${matchedCount}` : "--";
@@ -796,8 +982,10 @@ function historyFilterParams() {
   const params = new URLSearchParams({ limit: String(HISTORY_FETCH_LIMIT) });
   const selectedSymbol = historySymbolFilter.value || ALL_SYMBOLS;
   const selectedStatus = historyStatusFilter.value || ALL_SYMBOLS;
+  const windowDays = historyWindowFilter.value || "0";
   if (selectedSymbol !== ALL_SYMBOLS) params.set("symbol", selectedSymbol);
   if (selectedStatus !== ALL_SYMBOLS) params.set("status", selectedStatus);
+  if (windowDays !== "0") params.set("windowDays", windowDays);
   return params;
 }
 
@@ -895,13 +1083,21 @@ async function clearHistory() {
   }
 }
 
-async function runQuery() {
+async function runQuery({ automatic = false } = {}) {
   if (!tokenConfigured) {
+    clearAutoRefresh("Auto refresh needs a valid token");
     openTokenPanel();
     return;
   }
+  if (queryInProgress) return;
+  clearAutoRefresh();
+  queryInProgress = true;
   queryButton.disabled = true;
   queryButtonLabel.textContent = "Calculating...";
+  setAutoRefreshStatus(
+    automatic ? "Automatic refresh is running…" : "Calculation is running…",
+    "running"
+  );
   saveSettings();
   try {
     const data = await api("/api/query", buildQueryPayload());
@@ -918,8 +1114,10 @@ async function runQuery() {
       reason: error.message,
     });
   } finally {
+    queryInProgress = false;
     queryButton.disabled = false;
     queryButtonLabel.textContent = "Calculate";
+    scheduleAutoRefresh();
   }
 }
 
@@ -986,8 +1184,21 @@ refreshHistoryButton.addEventListener("click", loadHistory);
 clearHistoryButton.addEventListener("click", clearHistory);
 historySymbolFilter.addEventListener("change", loadHistory);
 historyStatusFilter.addEventListener("change", loadHistory);
+historyWindowFilter.addEventListener("change", loadHistory);
+autoRefreshSelect.addEventListener("change", () => {
+  saveSettings();
+  scheduleAutoRefresh();
+});
+resultSortSelect.addEventListener("change", () => renderRows(latestRows, { markRun: false }));
 chartSymbolSelect.addEventListener("change", () => renderChart(historyRows));
 window.addEventListener("resize", () => renderChart(historyRows));
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    clearAutoRefresh("Auto refresh paused while this tab is hidden");
+  } else if (autoRefreshMinutes() && latestRows.length) {
+    scheduleAutoRefresh();
+  }
+});
 tokenInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") saveToken();
 });
@@ -999,6 +1210,7 @@ setRunExportState();
 updateResultSummary([]);
 renderHistorySummary(null);
 updateFilteredHistoryLinks();
+scheduleAutoRefresh();
 loadStatus();
 loadUniverses();
 loadHistory();

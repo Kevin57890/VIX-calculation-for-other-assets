@@ -533,7 +533,7 @@ def records_json_bytes(path: Path = RECORDS_PATH) -> bytes:
     return json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
 
 
-def parse_history_query(query_string: str) -> tuple[int, Optional[str], str]:
+def parse_history_query(query_string: str) -> tuple[int, Optional[str], str, int]:
     query = urllib.parse.parse_qs(query_string)
     try:
         limit = int((query.get("limit") or ["25"])[0])
@@ -541,7 +541,11 @@ def parse_history_query(query_string: str) -> tuple[int, Optional[str], str]:
         limit = 25
     symbol = (query.get("symbol") or [None])[0]
     status = (query.get("status") or ["__all__"])[0]
-    return limit, symbol, status
+    try:
+        window_days = int((query.get("windowDays") or ["0"])[0])
+    except ValueError:
+        window_days = -1
+    return limit, symbol, status, window_days
 
 
 def history_status_bucket(status: Any) -> str:
@@ -553,11 +557,37 @@ def history_status_bucket(status: Any) -> str:
     return "warn"
 
 
+def history_window_days(value: Any) -> int:
+    """Return an allowed rolling-history window, where zero means all records."""
+    try:
+        days = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("windowDays must be one of: 0, 7, 30, 90, 365") from exc
+    if days not in {0, 7, 30, 90, 365}:
+        raise ValueError("windowDays must be one of: 0, 7, 30, 90, 365")
+    return days
+
+
+def history_recorded_at(row: Dict[str, Any]) -> Optional[dt.datetime]:
+    raw_value = str(row.get("recorded_at_utc") or row.get("ts_utc") or "").strip()
+    if not raw_value:
+        return None
+    try:
+        parsed = dt.datetime.fromisoformat(raw_value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=dt.timezone.utc)
+    return parsed.astimezone(dt.timezone.utc)
+
+
 def history_payload(
     path: Path = RECORDS_PATH,
     limit: int = 25,
     symbol: Optional[str] = None,
     status: str = "__all__",
+    window_days: int = 0,
+    now: Optional[dt.datetime] = None,
 ) -> Dict[str, Any]:
     limit = min(max(int(limit), 1), 500)
     _, rows = calc.read_csv_rows(str(path))
@@ -582,6 +612,8 @@ def history_payload(
     elif selected_status not in {"ok", "warn", "error"}:
         raise ValueError("status must be one of: all, ok, warn, error")
 
+    selected_window_days = history_window_days(window_days)
+
     filtered = rows
     if selected_symbol:
         filtered = [
@@ -595,6 +627,19 @@ def history_payload(
             for row in filtered
             if history_status_bucket(row.get("status")) == selected_status
         ]
+    if selected_window_days:
+        reference_time = now or dt.datetime.now(dt.timezone.utc)
+        if reference_time.tzinfo is None:
+            reference_time = reference_time.replace(tzinfo=dt.timezone.utc)
+        cutoff = reference_time.astimezone(dt.timezone.utc) - dt.timedelta(
+            days=selected_window_days
+        )
+        filtered = [
+            row
+            for row in filtered
+            if (recorded_at := history_recorded_at(row)) is not None
+            and recorded_at >= cutoff
+        ]
 
     recent_rows = filtered[-limit:]
     return {
@@ -604,6 +649,7 @@ def history_payload(
         "matchedCount": len(filtered),
         "totalCount": len(rows),
         "symbols": symbols,
+        "windowDays": selected_window_days,
         "recordsPath": str(path),
     }
 
@@ -613,8 +659,9 @@ def history_csv_bytes(
     limit: int = 25,
     symbol: Optional[str] = None,
     status: str = "__all__",
+    window_days: int = 0,
 ) -> bytes:
-    payload = history_payload(path, limit, symbol, status)
+    payload = history_payload(path, limit, symbol, status, window_days)
     return csv_rows_bytes(payload["rows"], RECORD_HEADERS)
 
 
@@ -623,8 +670,9 @@ def history_json_bytes(
     limit: int = 25,
     symbol: Optional[str] = None,
     status: str = "__all__",
+    window_days: int = 0,
 ) -> bytes:
-    payload = history_payload(path, limit, symbol, status)
+    payload = history_payload(path, limit, symbol, status, window_days)
     payload.update(
         {
             "version": calc.VERSION,
@@ -635,6 +683,7 @@ def history_json_bytes(
                 "limit": min(max(int(limit), 1), 500),
                 "symbol": symbol or "__all__",
                 "status": status or "__all__",
+                "windowDays": history_window_days(window_days),
             },
         }
     )
@@ -658,8 +707,9 @@ def history_summary_payload(
     limit: int = 500,
     symbol: Optional[str] = None,
     status: str = "__all__",
+    window_days: int = 0,
 ) -> Dict[str, Any]:
-    payload = history_payload(path, limit, symbol, status)
+    payload = history_payload(path, limit, symbol, status, window_days)
     points: List[Dict[str, Any]] = []
     for row in payload["rows"]:
         value = history_numeric_value(row)
@@ -682,6 +732,11 @@ def history_summary_payload(
         if latest is not None and previous is not None
         else None
     )
+    change_percent = (
+        (change / previous["value"]) * 100
+        if change is not None and previous is not None and previous["value"] != 0
+        else None
+    )
     if change is None:
         trend = "flat"
     elif abs(change) < 0.000001:
@@ -690,6 +745,27 @@ def history_summary_payload(
         trend = "up"
     else:
         trend = "down"
+
+    sorted_values = sorted(values)
+    middle = len(sorted_values) // 2
+    median = (
+        sorted_values[middle]
+        if len(sorted_values) % 2
+        else (sorted_values[middle - 1] + sorted_values[middle]) / 2
+    ) if sorted_values else None
+    percentile = (
+        sum(value <= latest["value"] for value in values) / len(values) * 100
+        if latest is not None and values
+        else None
+    )
+    if percentile is None:
+        regime = "unknown"
+    elif percentile >= 80:
+        regime = "high"
+    elif percentile <= 20:
+        regime = "low"
+    else:
+        regime = "normal"
 
     return {
         "ok": True,
@@ -700,14 +776,19 @@ def history_summary_payload(
         "latest": latest,
         "previous": previous,
         "change": round(change, 4) if change is not None else None,
+        "changePercent": round(change_percent, 2) if change_percent is not None else None,
         "trend": trend,
         "average": round(math.fsum(values) / len(values), 4) if values else None,
+        "median": round(median, 4) if median is not None else None,
         "low": round(min(values), 4) if values else None,
         "high": round(max(values), 4) if values else None,
+        "percentile": round(percentile, 1) if percentile is not None else None,
+        "regime": regime,
         "filters": {
             "limit": min(max(int(limit), 1), 500),
             "symbol": symbol or "__all__",
             "status": status or "__all__",
+            "windowDays": payload["windowDays"],
         },
     }
 
@@ -817,9 +898,11 @@ class AssetVixHandler(BaseHTTPRequestHandler):
             self.wfile.write(data)
 
     def send_history_csv(self, query_string: str, head_only: bool = False) -> None:
-        limit, symbol, status = parse_history_query(query_string)
+        limit, symbol, status, window_days = parse_history_query(query_string)
         try:
-            data = history_csv_bytes(RECORDS_PATH, limit, symbol, status)
+            data = history_csv_bytes(
+                RECORDS_PATH, limit, symbol, status, window_days
+            )
         except ValueError as exc:
             self.send_json({"ok": False, "error": str(exc)}, status=400)
             return
@@ -836,9 +919,11 @@ class AssetVixHandler(BaseHTTPRequestHandler):
             self.wfile.write(data)
 
     def send_history_json(self, query_string: str, head_only: bool = False) -> None:
-        limit, symbol, status = parse_history_query(query_string)
+        limit, symbol, status, window_days = parse_history_query(query_string)
         try:
-            data = history_json_bytes(RECORDS_PATH, limit, symbol, status)
+            data = history_json_bytes(
+                RECORDS_PATH, limit, symbol, status, window_days
+            )
         except ValueError as exc:
             self.send_json({"ok": False, "error": str(exc)}, status=400)
             return
@@ -917,18 +1002,22 @@ class AssetVixHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/api/history":
-            limit, symbol, status = parse_history_query(parsed.query)
+            limit, symbol, status, window_days = parse_history_query(parsed.query)
             try:
-                self.send_json(history_payload(RECORDS_PATH, limit, symbol, status))
+                self.send_json(
+                    history_payload(RECORDS_PATH, limit, symbol, status, window_days)
+                )
             except ValueError as exc:
                 self.send_json({"ok": False, "error": str(exc)}, status=400)
             return
 
         if parsed.path == "/api/history/summary":
-            limit, symbol, status = parse_history_query(parsed.query)
+            limit, symbol, status, window_days = parse_history_query(parsed.query)
             try:
                 self.send_json(
-                    history_summary_payload(RECORDS_PATH, limit, symbol, status)
+                    history_summary_payload(
+                        RECORDS_PATH, limit, symbol, status, window_days
+                    )
                 )
             except ValueError as exc:
                 self.send_json({"ok": False, "error": str(exc)}, status=400)

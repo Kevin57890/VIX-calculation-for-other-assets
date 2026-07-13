@@ -176,6 +176,20 @@
             </label>
           </section>
 
+          <section class="monitoring-control">
+            <label for="autoRefreshSelect">Auto refresh</label>
+            <select id="autoRefreshSelect">
+              <option value="0">Off — manual only</option>
+              <option value="5">Every 5 minutes</option>
+              <option value="15">Every 15 minutes</option>
+              <option value="30">Every 30 minutes</option>
+              <option value="60">Every hour</option>
+            </select>
+            <p id="autoRefreshStatus" class="monitoring-note" role="status" aria-live="polite">
+              Manual refresh only
+            </p>
+          </section>
+
           <button id="queryButton" class="primary-button">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="m21 21-4.3-4.3" />
@@ -275,6 +289,38 @@
             </table>
           </div>
 
+          <div class="scanner-wrap">
+            <div class="table-head scanner-head">
+              <div>
+                <h2>Volatility Scanner</h2>
+                <p id="scannerNote">Calculate a basket to compare cross-asset volatility</p>
+              </div>
+              <label class="result-sort-control">
+                Sort results
+                <select id="resultSortSelect">
+                  <option value="high">30D: high to low</option>
+                  <option value="low">30D: low to high</option>
+                  <option value="symbol">Symbol: A to Z</option>
+                </select>
+              </label>
+            </div>
+            <div class="scanner-summary">
+              <div>
+                <span>Highest</span>
+                <strong id="scannerHigh">--</strong>
+              </div>
+              <div>
+                <span>Lowest</span>
+                <strong id="scannerLow">--</strong>
+              </div>
+              <div>
+                <span>Basket spread</span>
+                <strong id="scannerSpread">--</strong>
+              </div>
+            </div>
+            <div id="scannerList" class="scanner-list" aria-live="polite"></div>
+          </div>
+
           <div class="chart-wrap">
             <div class="table-head chart-head">
               <div>
@@ -317,7 +363,7 @@
             <div class="table-head">
               <div>
                 <h2>History</h2>
-                <p id="historyNote">Latest recorded calculations</p>
+                <p id="historyNote">Monitor recorded calculations and volatility regime</p>
               </div>
               <div class="history-actions">
                 <a id="downloadRecordsLink" class="link-button" href="/api/records.csv" download>
@@ -353,6 +399,16 @@
             </div>
             <div class="history-filters">
               <label>
+                Window
+                <select id="historyWindowFilter">
+                  <option value="0">All records</option>
+                  <option value="7">Last 7 days</option>
+                  <option value="30" selected>Last 30 days</option>
+                  <option value="90">Last 90 days</option>
+                  <option value="365">Last 12 months</option>
+                </select>
+              </label>
+              <label>
                 Symbol
                 <select id="historySymbolFilter">
                   <option value="__all__">All</option>
@@ -378,12 +434,28 @@
                 <strong id="historyChange">--</strong>
               </div>
               <div>
+                <span>Change %</span>
+                <strong id="historyChangePercent">--</strong>
+              </div>
+              <div>
                 <span>Average</span>
                 <strong id="historyAverage">--</strong>
               </div>
               <div>
+                <span>Median</span>
+                <strong id="historyMedian">--</strong>
+              </div>
+              <div>
                 <span>Range</span>
                 <strong id="historyRange">--</strong>
+              </div>
+              <div>
+                <span>Percentile</span>
+                <strong id="historyPercentile">--</strong>
+              </div>
+              <div>
+                <span>Regime</span>
+                <strong id="historyRegime">--</strong>
               </div>
               <div>
                 <span>Numeric</span>
