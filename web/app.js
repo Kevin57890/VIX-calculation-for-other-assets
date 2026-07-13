@@ -71,6 +71,7 @@ const chartLegend = document.querySelector("#chartLegend");
 const mainValue = document.querySelector("#mainValue");
 const mainSymbol = document.querySelector("#mainSymbol");
 const mainStatus = document.querySelector("#mainStatus");
+const mainChange = document.querySelector("#mainChange");
 const mainExpirations = document.querySelector("#mainExpirations");
 const mainAge = document.querySelector("#mainAge");
 const mainForward = document.querySelector("#mainForward");
@@ -101,6 +102,9 @@ const RUN_EXPORT_FIELDS = [
   "symbol",
   "status",
   "asset_vix_30d",
+  "previous_asset_vix_30d",
+  "change_from_previous",
+  "change_from_previous_pct",
   "variance_30d",
   "target_days",
   "rate_source",
@@ -547,11 +551,44 @@ function escapeHtml(value) {
   });
 }
 
+function optionalNumber(value) {
+  if (value === null || value === undefined || String(value).trim() === "") return null;
+  return parseAssetVix(value);
+}
+
+function previousRunComparison(row) {
+  const previous = optionalNumber(row?.previous_asset_vix_30d);
+  const change = optionalNumber(row?.change_from_previous);
+  const changePercent = optionalNumber(row?.change_from_previous_pct);
+  if (previous === null) {
+    return { text: "First recorded run", trend: "flat", hasPrevious: false };
+  }
+  if (change === null) {
+    return { text: `Prior ${formatValue(previous)}`, trend: "flat", hasPrevious: true };
+  }
+  const percentage = changePercent === null ? "" : ` · ${formatSignedPercent(changePercent)}`;
+  const trend = Math.abs(change) < 0.000001 ? "flat" : change > 0 ? "up" : "down";
+  return {
+    text: `${formatSignedValue(change)}${percentage}`,
+    trend,
+    hasPrevious: true,
+  };
+}
+
+function updatePreviousRunIndicator(row) {
+  const comparison = previousRunComparison(row);
+  mainChange.textContent =
+    row && comparison.hasPrevious ? `${comparison.text} vs prior` : comparison.text;
+  mainChange.classList.remove("trend-up", "trend-down", "trend-flat");
+  mainChange.classList.add(`trend-${row ? comparison.trend : "flat"}`);
+}
+
 function updateMain(row) {
   if (!row) {
     mainValue.textContent = "--";
     mainSymbol.textContent = "Waiting for query";
     mainStatus.textContent = "idle";
+    updatePreviousRunIndicator(null);
     mainExpirations.textContent = "--";
     mainAge.textContent = "--";
     mainForward.textContent = "--";
@@ -564,6 +601,7 @@ function updateMain(row) {
   mainValue.textContent = formatValue(row.asset_vix_30d);
   mainSymbol.textContent = row.symbol || "--";
   mainStatus.textContent = row.status || "--";
+  updatePreviousRunIndicator(row);
   mainExpirations.textContent = row.expirations || "--";
   mainAge.textContent =
     row.max_quote_age_minutes === null || row.max_quote_age_minutes === undefined
@@ -666,7 +704,7 @@ function renderRows(rows, { markRun = true } = {}) {
   renderScanner(rows);
   resultsBody.innerHTML = "";
   if (!rows.length) {
-    resultsBody.innerHTML = '<tr><td colspan="6" class="empty">No results</td></tr>';
+    resultsBody.innerHTML = '<tr><td colspan="7" class="empty">No results</td></tr>';
     updateMain(null);
     return;
   }
@@ -677,10 +715,12 @@ function renderRows(rows, { markRun = true } = {}) {
       row.max_quote_age_minutes === null || row.max_quote_age_minutes === undefined
         ? "--"
         : `${escapeHtml(row.max_quote_age_minutes)} min`;
+    const comparison = previousRunComparison(row);
     tr.innerHTML = `
       <td><strong>${escapeHtml(row.symbol || "")}</strong></td>
       <td><span class="badge ${badgeClass(row.status)}">${escapeHtml(row.status || "")}</span></td>
       <td>${escapeHtml(formatValue(row.asset_vix_30d))}</td>
+      <td><span class="previous-change trend-${comparison.trend}">${escapeHtml(comparison.text)}</span></td>
       <td>${escapeHtml(row.expirations || "--")}</td>
       <td>${quoteAge}</td>
       <td>${escapeHtml(row.reason || "")}</td>

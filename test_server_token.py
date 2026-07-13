@@ -160,6 +160,51 @@ class ServerTokenTests(unittest.TestCase):
                 server.calc.compute_symbols = original_compute
                 server.RECORDS_PATH = original_records_path
 
+    def test_compute_rows_compares_each_symbol_with_its_prior_record(self):
+        original_compute = server.calc.compute_symbols
+        original_records_path = server.RECORDS_PATH
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                server.RECORDS_PATH = Path(directory) / "records" / "calculations.csv"
+                server.calc.write_csv_rows(
+                    str(server.RECORDS_PATH),
+                    [
+                        {
+                            "recorded_at_utc": "2026-07-12T10:00:00+00:00",
+                            "symbol": "SPY",
+                            "status": "ok",
+                            "asset_vix_30d": 18.5,
+                        },
+                        {
+                            "recorded_at_utc": "2026-07-12T10:00:00+00:00",
+                            "symbol": "QQQ",
+                            "status": "error",
+                            "asset_vix_30d": "",
+                        },
+                    ],
+                )
+
+                def fake_compute(symbols, args):
+                    self.assertEqual(symbols, ["SPY", "QQQ"])
+                    return [
+                        {"symbol": "SPY", "status": "ok", "asset_vix_30d": 21.25},
+                        {"symbol": "QQQ", "status": "ok", "asset_vix_30d": 24.0},
+                    ]
+
+                server.calc.compute_symbols = fake_compute
+                rows = server.compute_rows({"symbols": "SPY,QQQ"}, "valid-token-123456")
+                self.assertEqual(rows[0]["previous_asset_vix_30d"], 18.5)
+                self.assertEqual(rows[0]["change_from_previous"], 2.75)
+                self.assertEqual(rows[0]["change_from_previous_pct"], 14.86)
+                self.assertIsNone(rows[1]["previous_asset_vix_30d"])
+                self.assertIsNone(rows[1]["change_from_previous"])
+
+                fields, _ = server.calc.read_csv_rows(str(server.RECORDS_PATH))
+                self.assertNotIn("change_from_previous", fields)
+            finally:
+                server.calc.compute_symbols = original_compute
+                server.RECORDS_PATH = original_records_path
+
     def test_compute_rows_preserves_zero_overrides(self):
         original_compute = server.calc.compute_symbols
         original_records_path = server.RECORDS_PATH
@@ -241,7 +286,7 @@ class ServerTokenTests(unittest.TestCase):
             )
 
             payload = json.loads(server.records_json_bytes(path))
-            self.assertEqual(payload["version"], "1.8.0")
+            self.assertEqual(payload["version"], "1.9.0")
             self.assertEqual(payload["count"], 1)
             self.assertEqual(payload["rows"][0]["symbol"], "SPY")
             self.assertIn("exported_at_utc", payload)
@@ -294,7 +339,7 @@ class ServerTokenTests(unittest.TestCase):
             self.assertEqual(rows[0]["reason"], "'=warn")
 
             payload = json.loads(server.history_json_bytes(path, limit=10, symbol="SPY", status="warn"))
-            self.assertEqual(payload["version"], "1.8.0")
+            self.assertEqual(payload["version"], "1.9.0")
             self.assertEqual(payload["count"], 1)
             self.assertEqual(payload["matchedCount"], 1)
             self.assertEqual(payload["totalCount"], 3)
@@ -529,7 +574,7 @@ class ServerTokenTests(unittest.TestCase):
         self.assertIn("Permissions-Policy:", headers)
         self.assertIn("Referrer-Policy: no-referrer", headers)
         self.assertIn("X-Content-Type-Options: nosniff", headers)
-        self.assertEqual(handler.version_string(), "AssetVIXLocal/1.8.0")
+        self.assertEqual(handler.version_string(), "AssetVIXLocal/1.9.0")
 
 
 if __name__ == "__main__":

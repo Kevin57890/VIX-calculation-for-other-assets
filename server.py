@@ -441,6 +441,42 @@ def default_args() -> argparse.Namespace:
     )
 
 
+def latest_recorded_values_by_symbol(path: Path = RECORDS_PATH) -> Dict[str, float]:
+    """Return the latest usable AssetVIX value for each recorded symbol."""
+    _, records = calc.read_csv_rows(str(path))
+    latest: Dict[str, float] = {}
+    for row in reversed(records):
+        symbol = str(row.get("symbol") or "").strip().upper()
+        if not symbol or symbol in latest:
+            continue
+        value = history_numeric_value(row)
+        if value is not None:
+            latest[symbol] = value
+    return latest
+
+
+def add_previous_run_comparison(
+    rows: List[Dict[str, Any]], previous_values: Dict[str, float]
+) -> List[Dict[str, Any]]:
+    """Attach ephemeral, per-symbol changes against the prior recorded run."""
+    for row in rows:
+        symbol = str(row.get("symbol") or "").strip().upper()
+        previous = previous_values.get(symbol)
+        current = history_numeric_value(row)
+        change = current - previous if current is not None and previous is not None else None
+        change_percent = (
+            (change / previous) * 100
+            if change is not None and previous not in (None, 0)
+            else None
+        )
+        row["previous_asset_vix_30d"] = round(previous, 4) if previous is not None else None
+        row["change_from_previous"] = round(change, 4) if change is not None else None
+        row["change_from_previous_pct"] = (
+            round(change_percent, 2) if change_percent is not None else None
+        )
+    return rows
+
+
 def compute_rows(payload: Dict[str, Any], token: str) -> List[Dict[str, Any]]:
     args = default_args()
     args.token = token
@@ -495,8 +531,10 @@ def compute_rows(payload: Dict[str, Any], token: str) -> List[Dict[str, Any]]:
             f"A query can include at most {MAX_QUERY_SYMBOLS} unique symbols"
         )
 
+    previous_values = latest_recorded_values_by_symbol(RECORDS_PATH)
     rows = calc.compute_symbols(symbols, args)
-    return calc.record_rows(str(RECORDS_PATH), rows, source="web")
+    recorded_rows = calc.record_rows(str(RECORDS_PATH), rows, source="web")
+    return add_previous_run_comparison(recorded_rows, previous_values)
 
 
 def csv_rows_bytes(

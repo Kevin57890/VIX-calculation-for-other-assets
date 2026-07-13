@@ -7,6 +7,18 @@ All notable project changes are summarized here.
 - Reworked the GitHub README homepage so the formula section uses stable
   plain-text notation instead of Markdown math blocks.
 
+## 1.9.0 - 2026-07-14
+
+- Added a previous-run comparison for every calculated symbol, surfacing the
+  absolute and percentage change from its latest usable local record.
+- Kept comparison fields scoped to the current run response and export, so
+  existing long-term calculation-history CSV files remain clean and compatible.
+- Redesigned the local dashboard with a dark research-terminal result stage,
+  softer data surfaces, clearer hierarchy, and stronger visual feedback for
+  volatility moves.
+- Added a dedicated “vs Prior” results column and hero-level change indicator
+  so monitoring changes are readable at a glance.
+
 ## 1.8.0 - 2026-07-13
 
 - Added a Volatility Scanner to rank the current calculation basket by 30-day
