@@ -42,6 +42,11 @@ const summaryOk = document.querySelector("#summaryOk");
 const summaryWarn = document.querySelector("#summaryWarn");
 const summaryError = document.querySelector("#summaryError");
 const summaryAverage = document.querySelector("#summaryAverage");
+const pulseNote = document.querySelector("#pulseNote");
+const pulseElevated = document.querySelector("#pulseElevated");
+const pulseMoves = document.querySelector("#pulseMoves");
+const pulseReady = document.querySelector("#pulseReady");
+const pulseList = document.querySelector("#pulseList");
 const historyBody = document.querySelector("#historyBody");
 const historyNote = document.querySelector("#historyNote");
 const refreshHistoryButton = document.querySelector("#refreshHistoryButton");
@@ -72,6 +77,7 @@ const mainValue = document.querySelector("#mainValue");
 const mainSymbol = document.querySelector("#mainSymbol");
 const mainStatus = document.querySelector("#mainStatus");
 const mainChange = document.querySelector("#mainChange");
+const mainRegime = document.querySelector("#mainRegime");
 const mainExpirations = document.querySelector("#mainExpirations");
 const mainAge = document.querySelector("#mainAge");
 const mainForward = document.querySelector("#mainForward");
@@ -105,6 +111,10 @@ const RUN_EXPORT_FIELDS = [
   "previous_asset_vix_30d",
   "change_from_previous",
   "change_from_previous_pct",
+  "history_sample_count",
+  "history_median",
+  "history_percentile",
+  "history_regime",
   "variance_30d",
   "target_days",
   "rate_source",
@@ -575,6 +585,37 @@ function previousRunComparison(row) {
   };
 }
 
+function formatPercentile(value) {
+  const numeric = optionalNumber(value);
+  if (numeric === null) return "--";
+  const rounded = Math.round(numeric);
+  const remainder = rounded % 100;
+  const suffix =
+    remainder >= 11 && remainder <= 13
+      ? "th"
+      : ["th", "st", "nd", "rd"][rounded % 10] || "th";
+  return `${rounded}${suffix}`;
+}
+
+function historyBaseline(row) {
+  const sampleCount = Math.max(0, Math.floor(optionalNumber(row?.history_sample_count) || 0));
+  const percentile = optionalNumber(row?.history_percentile);
+  const regime = String(row?.history_regime || "unknown").toLowerCase();
+  const ready = percentile !== null && ["high", "normal", "low"].includes(regime);
+  if (!ready) {
+    const building = sampleCount ? `Baseline ${sampleCount}/3` : "Baseline pending";
+    return { ready: false, regime: "unknown", text: building, compact: building, sampleCount };
+  }
+  return {
+    ready: true,
+    regime,
+    text: `${formatPercentile(percentile)} percentile · ${regime}`,
+    compact: `${regime} · ${formatPercentile(percentile)}`,
+    sampleCount,
+    percentile,
+  };
+}
+
 function updatePreviousRunIndicator(row) {
   const comparison = previousRunComparison(row);
   mainChange.textContent =
@@ -583,12 +624,20 @@ function updatePreviousRunIndicator(row) {
   mainChange.classList.add(`trend-${row ? comparison.trend : "flat"}`);
 }
 
+function updateHistoryBaselineIndicator(row) {
+  const baseline = historyBaseline(row);
+  mainRegime.textContent = row ? baseline.text : "History baseline pending";
+  mainRegime.classList.remove("regime-high", "regime-normal", "regime-low", "regime-unknown");
+  mainRegime.classList.add(`regime-${row ? baseline.regime : "unknown"}`);
+}
+
 function updateMain(row) {
   if (!row) {
     mainValue.textContent = "--";
     mainSymbol.textContent = "Waiting for query";
     mainStatus.textContent = "idle";
     updatePreviousRunIndicator(null);
+    updateHistoryBaselineIndicator(null);
     mainExpirations.textContent = "--";
     mainAge.textContent = "--";
     mainForward.textContent = "--";
@@ -602,6 +651,7 @@ function updateMain(row) {
   mainSymbol.textContent = row.symbol || "--";
   mainStatus.textContent = row.status || "--";
   updatePreviousRunIndicator(row);
+  updateHistoryBaselineIndicator(row);
   mainExpirations.textContent = row.expirations || "--";
   mainAge.textContent =
     row.max_quote_age_minutes === null || row.max_quote_age_minutes === undefined
@@ -697,14 +747,87 @@ function renderScanner(rows) {
   }
 }
 
+function renderRiskPulse(rows) {
+  const items = rows
+    .filter((row) => rowAssetVix(row) !== null)
+    .map((row) => ({
+      row,
+      baseline: historyBaseline(row),
+      changePercent: optionalNumber(row.change_from_previous_pct),
+    }));
+  const elevated = items.filter((item) => item.baseline.regime === "high");
+  const sharpMoves = items.filter(
+    (item) => item.changePercent !== null && Math.abs(item.changePercent) >= 10
+  );
+  const baselineReady = items.filter((item) => item.baseline.ready);
+  pulseElevated.textContent = String(elevated.length);
+  pulseMoves.textContent = String(sharpMoves.length);
+  pulseReady.textContent = `${baselineReady.length}/${items.length}`;
+  pulseList.innerHTML = "";
+
+  if (!items.length) {
+    pulseNote.textContent = rows.length
+      ? "No usable 30D values to interpret in this run"
+      : "Calculate a basket to surface priority volatility signals";
+    pulseList.innerHTML = '<p class="pulse-empty">Risk signals appear after a usable calculation</p>';
+    return;
+  }
+
+  pulseNote.textContent = `${baselineReady.length}/${items.length} symbols have a usable history baseline (3+ prior records)`;
+  const signals = items
+    .map((item) => {
+      const isElevated = item.baseline.regime === "high";
+      const isSharp = item.changePercent !== null && Math.abs(item.changePercent) >= 10;
+      if (!isElevated && !isSharp) return null;
+      const kind = isElevated && isSharp ? "priority" : isElevated ? "elevated" : "moving";
+      const label = isElevated ? "Elevated" : item.changePercent > 0 ? "Rising" : "Cooling";
+      const detail = [
+        isElevated ? `${formatPercentile(item.baseline.percentile)} percentile` : "",
+        isSharp ? `${formatSignedPercent(item.changePercent)} since prior` : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      const strength = (isElevated ? 2 : 0) + (isSharp ? 1 : 0);
+      return { ...item, kind, label, detail, strength };
+    })
+    .filter(Boolean)
+    .sort((left, right) => {
+      if (left.strength !== right.strength) return right.strength - left.strength;
+      return Math.abs(right.changePercent || 0) - Math.abs(left.changePercent || 0);
+    });
+
+  if (!signals.length) {
+    pulseList.innerHTML = '<p class="pulse-empty">No elevated-history or sharp-move signals in this run</p>';
+    return;
+  }
+
+  for (const signal of signals.slice(0, 6)) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `pulse-row pulse-${signal.kind}`;
+    button.addEventListener("click", () => updateMain(signal.row));
+    const label = document.createElement("span");
+    label.className = "pulse-label";
+    label.textContent = signal.label;
+    const symbol = document.createElement("strong");
+    symbol.textContent = signal.row.symbol || "UNKNOWN";
+    const detail = document.createElement("span");
+    detail.className = "pulse-detail";
+    detail.textContent = signal.detail;
+    button.append(label, symbol, detail);
+    pulseList.appendChild(button);
+  }
+}
+
 function renderRows(rows, { markRun = true } = {}) {
   latestRows = rows.slice();
   setRunExportState();
   updateResultSummary(rows);
+  renderRiskPulse(rows);
   renderScanner(rows);
   resultsBody.innerHTML = "";
   if (!rows.length) {
-    resultsBody.innerHTML = '<tr><td colspan="7" class="empty">No results</td></tr>';
+    resultsBody.innerHTML = '<tr><td colspan="8" class="empty">No results</td></tr>';
     updateMain(null);
     return;
   }
@@ -716,11 +839,13 @@ function renderRows(rows, { markRun = true } = {}) {
         ? "--"
         : `${escapeHtml(row.max_quote_age_minutes)} min`;
     const comparison = previousRunComparison(row);
+    const baseline = historyBaseline(row);
     tr.innerHTML = `
       <td><strong>${escapeHtml(row.symbol || "")}</strong></td>
       <td><span class="badge ${badgeClass(row.status)}">${escapeHtml(row.status || "")}</span></td>
       <td>${escapeHtml(formatValue(row.asset_vix_30d))}</td>
       <td><span class="previous-change trend-${comparison.trend}">${escapeHtml(comparison.text)}</span></td>
+      <td><span class="baseline-badge regime-${baseline.regime}">${escapeHtml(baseline.compact)}</span></td>
       <td>${escapeHtml(row.expirations || "--")}</td>
       <td>${quoteAge}</td>
       <td>${escapeHtml(row.reason || "")}</td>

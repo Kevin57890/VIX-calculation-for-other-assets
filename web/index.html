@@ -209,6 +209,7 @@
             <div class="hero-meta">
               <span id="mainStatus">idle</span>
               <span id="mainChange" class="change-indicator">No prior run</span>
+              <span id="mainRegime" class="regime-chip">History baseline pending</span>
               <span id="mainExpirations">--</span>
               <span id="mainAge">--</span>
             </div>
@@ -278,6 +279,7 @@
                   <th>Status</th>
                   <th>30D</th>
                   <th>vs Prior</th>
+                  <th>History</th>
                   <th>Expirations</th>
                   <th>Quote Age</th>
                   <th>Reason</th>
@@ -285,10 +287,36 @@
               </thead>
               <tbody id="resultsBody">
                 <tr>
-                  <td colspan="7" class="empty">Enter symbols and click Calculate</td>
+                  <td colspan="8" class="empty">Enter symbols and click Calculate</td>
                 </tr>
               </tbody>
             </table>
+          </div>
+
+          <div class="pulse-wrap">
+            <div class="table-head pulse-head">
+              <div>
+                <p class="eyebrow">Run interpretation</p>
+                <h2>Risk Pulse</h2>
+                <p id="pulseNote">Calculate a basket to surface priority volatility signals</p>
+              </div>
+              <span class="pulse-disclaimer">Screening aid · not investment advice</span>
+            </div>
+            <div class="pulse-summary">
+              <div>
+                <span>Elevated</span>
+                <strong id="pulseElevated">0</strong>
+              </div>
+              <div>
+                <span>Sharp moves</span>
+                <strong id="pulseMoves">0</strong>
+              </div>
+              <div>
+                <span>Baseline ready</span>
+                <strong id="pulseReady">0/0</strong>
+              </div>
+            </div>
+            <div id="pulseList" class="pulse-list" aria-live="polite"></div>
           </div>
 
           <div class="scanner-wrap">

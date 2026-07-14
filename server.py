@@ -441,18 +441,18 @@ def default_args() -> argparse.Namespace:
     )
 
 
-def latest_recorded_values_by_symbol(path: Path = RECORDS_PATH) -> Dict[str, float]:
-    """Return the latest usable AssetVIX value for each recorded symbol."""
+def recorded_values_by_symbol(path: Path = RECORDS_PATH) -> Dict[str, List[float]]:
+    """Return usable AssetVIX history grouped by symbol in recorded order."""
     _, records = calc.read_csv_rows(str(path))
-    latest: Dict[str, float] = {}
-    for row in reversed(records):
+    values_by_symbol: Dict[str, List[float]] = {}
+    for row in records:
         symbol = str(row.get("symbol") or "").strip().upper()
-        if not symbol or symbol in latest:
+        if not symbol:
             continue
         value = history_numeric_value(row)
         if value is not None:
-            latest[symbol] = value
-    return latest
+            values_by_symbol.setdefault(symbol, []).append(value)
+    return values_by_symbol
 
 
 def add_previous_run_comparison(
@@ -474,6 +474,58 @@ def add_previous_run_comparison(
         row["change_from_previous_pct"] = (
             round(change_percent, 2) if change_percent is not None else None
         )
+    return rows
+
+
+def history_baseline(values: List[float], current: Optional[float]) -> Dict[str, Any]:
+    """Summarize a current value against at least three prior observations."""
+    if current is None or len(values) < 3:
+        return {
+            "sample_count": len(values),
+            "median": None,
+            "percentile": None,
+            "regime": "unknown",
+        }
+
+    sorted_values = sorted(values)
+    middle = len(sorted_values) // 2
+    median = (
+        sorted_values[middle]
+        if len(sorted_values) % 2
+        else (sorted_values[middle - 1] + sorted_values[middle]) / 2
+    )
+    percentile = sum(value <= current for value in values) / len(values) * 100
+    if percentile >= 80:
+        regime = "high"
+    elif percentile <= 20:
+        regime = "low"
+    else:
+        regime = "normal"
+    return {
+        "sample_count": len(values),
+        "median": median,
+        "percentile": percentile,
+        "regime": regime,
+    }
+
+
+def add_history_baseline(
+    rows: List[Dict[str, Any]], values_by_symbol: Dict[str, List[float]]
+) -> List[Dict[str, Any]]:
+    """Attach ephemeral percentile and regime context from prior local records."""
+    for row in rows:
+        symbol = str(row.get("symbol") or "").strip().upper()
+        baseline = history_baseline(values_by_symbol.get(symbol, []), history_numeric_value(row))
+        row["history_sample_count"] = baseline["sample_count"]
+        row["history_median"] = (
+            round(baseline["median"], 4) if baseline["median"] is not None else None
+        )
+        row["history_percentile"] = (
+            round(baseline["percentile"], 1)
+            if baseline["percentile"] is not None
+            else None
+        )
+        row["history_regime"] = baseline["regime"]
     return rows
 
 
@@ -531,10 +583,14 @@ def compute_rows(payload: Dict[str, Any], token: str) -> List[Dict[str, Any]]:
             f"A query can include at most {MAX_QUERY_SYMBOLS} unique symbols"
         )
 
-    previous_values = latest_recorded_values_by_symbol(RECORDS_PATH)
+    history_values = recorded_values_by_symbol(RECORDS_PATH)
+    previous_values = {
+        symbol: values[-1] for symbol, values in history_values.items() if values
+    }
     rows = calc.compute_symbols(symbols, args)
     recorded_rows = calc.record_rows(str(RECORDS_PATH), rows, source="web")
-    return add_previous_run_comparison(recorded_rows, previous_values)
+    add_previous_run_comparison(recorded_rows, previous_values)
+    return add_history_baseline(recorded_rows, history_values)
 
 
 def csv_rows_bytes(

@@ -205,6 +205,45 @@ class ServerTokenTests(unittest.TestCase):
                 server.calc.compute_symbols = original_compute
                 server.RECORDS_PATH = original_records_path
 
+    def test_compute_rows_adds_per_symbol_history_baseline(self):
+        original_compute = server.calc.compute_symbols
+        original_records_path = server.RECORDS_PATH
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                server.RECORDS_PATH = Path(directory) / "records" / "calculations.csv"
+                server.calc.write_csv_rows(
+                    str(server.RECORDS_PATH),
+                    [
+                        {"symbol": "SPY", "status": "ok", "asset_vix_30d": 15.0},
+                        {"symbol": "SPY", "status": "ok", "asset_vix_30d": 20.0},
+                        {"symbol": "SPY", "status": "stale", "asset_vix_30d": 25.0},
+                        {"symbol": "QQQ", "status": "ok", "asset_vix_30d": 22.0},
+                    ],
+                )
+
+                def fake_compute(symbols, args):
+                    return [
+                        {"symbol": "SPY", "status": "ok", "asset_vix_30d": 26.0},
+                        {"symbol": "QQQ", "status": "ok", "asset_vix_30d": 23.0},
+                    ]
+
+                server.calc.compute_symbols = fake_compute
+                rows = server.compute_rows({"symbols": "SPY,QQQ"}, "valid-token-123456")
+                self.assertEqual(rows[0]["history_sample_count"], 3)
+                self.assertEqual(rows[0]["history_median"], 20.0)
+                self.assertEqual(rows[0]["history_percentile"], 100.0)
+                self.assertEqual(rows[0]["history_regime"], "high")
+                self.assertEqual(rows[1]["history_sample_count"], 1)
+                self.assertIsNone(rows[1]["history_median"])
+                self.assertIsNone(rows[1]["history_percentile"])
+                self.assertEqual(rows[1]["history_regime"], "unknown")
+
+                fields, _ = server.calc.read_csv_rows(str(server.RECORDS_PATH))
+                self.assertNotIn("history_percentile", fields)
+            finally:
+                server.calc.compute_symbols = original_compute
+                server.RECORDS_PATH = original_records_path
+
     def test_compute_rows_preserves_zero_overrides(self):
         original_compute = server.calc.compute_symbols
         original_records_path = server.RECORDS_PATH
@@ -286,7 +325,7 @@ class ServerTokenTests(unittest.TestCase):
             )
 
             payload = json.loads(server.records_json_bytes(path))
-            self.assertEqual(payload["version"], "1.9.0")
+            self.assertEqual(payload["version"], "1.10.0")
             self.assertEqual(payload["count"], 1)
             self.assertEqual(payload["rows"][0]["symbol"], "SPY")
             self.assertIn("exported_at_utc", payload)
@@ -339,7 +378,7 @@ class ServerTokenTests(unittest.TestCase):
             self.assertEqual(rows[0]["reason"], "'=warn")
 
             payload = json.loads(server.history_json_bytes(path, limit=10, symbol="SPY", status="warn"))
-            self.assertEqual(payload["version"], "1.9.0")
+            self.assertEqual(payload["version"], "1.10.0")
             self.assertEqual(payload["count"], 1)
             self.assertEqual(payload["matchedCount"], 1)
             self.assertEqual(payload["totalCount"], 3)
@@ -574,7 +613,7 @@ class ServerTokenTests(unittest.TestCase):
         self.assertIn("Permissions-Policy:", headers)
         self.assertIn("Referrer-Policy: no-referrer", headers)
         self.assertIn("X-Content-Type-Options: nosniff", headers)
-        self.assertEqual(handler.version_string(), "AssetVIXLocal/1.9.0")
+        self.assertEqual(handler.version_string(), "AssetVIXLocal/1.10.0")
 
 
 if __name__ == "__main__":

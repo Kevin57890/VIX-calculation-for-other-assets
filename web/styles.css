@@ -1246,3 +1246,230 @@ tbody tr:hover {
     border-radius: var(--radius);
   }
 }
+
+/* 1.10 signal layer: keep interpretation compact while making action cues obvious. */
+.pulse-wrap {
+  padding: 20px;
+  border-top: 1px solid var(--line);
+  background:
+    radial-gradient(circle at 92% 0%, rgba(21, 164, 127, 0.12), transparent 18rem),
+    #f7fbfa;
+}
+
+.pulse-head {
+  align-items: start;
+}
+
+.eyebrow {
+  margin-bottom: 3px;
+  color: var(--accent-dark);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.pulse-disclaimer {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(105, 130, 132, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.68);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 720;
+  white-space: nowrap;
+}
+
+.pulse-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.pulse-summary div {
+  min-width: 0;
+  padding: 11px 13px;
+  border: 1px solid rgba(167, 193, 190, 0.52);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.pulse-summary span {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pulse-summary strong {
+  display: block;
+  margin-top: 5px;
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1;
+  font-weight: 800;
+}
+
+.pulse-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+  gap: 8px;
+}
+
+.pulse-row {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  grid-template-areas:
+    "label symbol"
+    "label detail";
+  column-gap: 9px;
+  width: 100%;
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--text);
+  text-align: left;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.pulse-row:hover {
+  border-color: rgba(19, 163, 127, 0.44);
+  box-shadow: 0 8px 18px rgba(20, 81, 72, 0.08);
+  transform: translateY(-1px);
+}
+
+.pulse-label {
+  grid-area: label;
+  align-self: center;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #eaf3f1;
+  color: var(--accent-dark);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pulse-row strong {
+  grid-area: symbol;
+  font-size: 13px;
+  line-height: 1.1;
+}
+
+.pulse-detail {
+  grid-area: detail;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 690;
+}
+
+.pulse-priority {
+  border-color: rgba(191, 118, 50, 0.32);
+  background: linear-gradient(125deg, rgba(255, 247, 225, 0.92), rgba(255, 255, 255, 0.9));
+}
+
+.pulse-priority .pulse-label {
+  background: rgba(180, 115, 25, 0.13);
+  color: #996113;
+}
+
+.pulse-elevated {
+  border-color: rgba(181, 64, 80, 0.24);
+}
+
+.pulse-elevated .pulse-label {
+  background: rgba(181, 64, 80, 0.1);
+  color: var(--danger);
+}
+
+.pulse-moving .pulse-label {
+  background: rgba(19, 163, 127, 0.11);
+  color: var(--accent-dark);
+}
+
+.pulse-empty {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 14px;
+  border: 1px dashed rgba(105, 130, 132, 0.35);
+  border-radius: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 690;
+  text-align: center;
+}
+
+.hero-meta .regime-high {
+  border-color: rgba(255, 198, 112, 0.28);
+  background: rgba(202, 134, 37, 0.2);
+  color: #ffe1a7;
+}
+
+.hero-meta .regime-normal {
+  border-color: rgba(119, 228, 189, 0.25);
+  background: rgba(31, 174, 130, 0.18);
+  color: #b4f5d8;
+}
+
+.hero-meta .regime-low {
+  border-color: rgba(159, 205, 255, 0.25);
+  background: rgba(65, 133, 206, 0.18);
+  color: #c6e5ff;
+}
+
+.hero-meta .regime-unknown {
+  color: rgba(243, 255, 251, 0.74);
+}
+
+.baseline-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #eef4f3;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.baseline-badge.regime-high {
+  background: rgba(189, 119, 24, 0.12);
+  color: #9a6316;
+}
+
+.baseline-badge.regime-normal {
+  background: rgba(8, 124, 93, 0.1);
+  color: var(--ok);
+}
+
+.baseline-badge.regime-low {
+  background: rgba(49, 95, 159, 0.11);
+  color: #315f9f;
+}
+
+@media (max-width: 900px) {
+  .pulse-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .pulse-disclaimer {
+    align-self: flex-start;
+  }
+
+  table {
+    min-width: 860px;
+  }
+}

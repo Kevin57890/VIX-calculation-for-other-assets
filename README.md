@@ -83,6 +83,10 @@ python3 asset_vix.py --symbols SPY,QQQ --mode delayed --json --fail-on-non-ok
   high/low values and spread, and shows every symbol versus its basket average
 - Per-symbol comparison against the previous recorded run, including absolute
   and percentage AssetVIX change without altering the historical-record schema
+- Per-symbol historical percentile and high/normal/low regime context, shown
+  only after at least three prior usable local observations
+- Risk Pulse panel that groups elevated-history readings and sharp run-to-run
+  moves into a compact, clickable monitoring shortlist
 - Current-run CSV and JSON exports from the results table
 - Filtered history CSV and JSON exports from the selected history view
 - Current-run summary for OK, warning, error, and average 30-day values

@@ -34,7 +34,7 @@ except ImportError:  # pragma: no cover - Python 3.8 fallback is not expected he
 
 
 MARKETDATA_BASE = "https://api.marketdata.app/v1"
-VERSION = "1.9.0"
+VERSION = "1.10.0"
 TREASURY_XML = (
     "https://home.treasury.gov/resource-center/data-chart-center/"
     "interest-rates/pages/xml"

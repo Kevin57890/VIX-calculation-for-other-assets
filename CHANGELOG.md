@@ -7,6 +7,17 @@ All notable project changes are summarized here.
 - Reworked the GitHub README homepage so the formula section uses stable
   plain-text notation instead of Markdown math blocks.
 
+## 1.10.0 - 2026-07-14
+
+- Added per-symbol historical-baseline context to each new calculation: usable
+  sample count, median, percentile, and high/normal/low regime labels.
+- Require at least three prior usable observations before assigning a regime,
+  so sparse history remains explicitly marked as a baseline in progress.
+- Added a Risk Pulse panel that prioritizes elevated historical readings and
+  sharp run-to-run moves, with direct selection into the detailed result view.
+- Refined the dashboard hierarchy and refreshed the GitHub preview to surface
+  the new monitoring signal layer without making the result table harder to scan.
+
 ## 1.9.0 - 2026-07-14
 
 - Added a previous-run comparison for every calculated symbol, surfacing the
