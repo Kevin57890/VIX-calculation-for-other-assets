@@ -43,10 +43,14 @@ const summaryWarn = document.querySelector("#summaryWarn");
 const summaryError = document.querySelector("#summaryError");
 const summaryAverage = document.querySelector("#summaryAverage");
 const pulseNote = document.querySelector("#pulseNote");
-const pulseElevated = document.querySelector("#pulseElevated");
-const pulseMoves = document.querySelector("#pulseMoves");
+const pulseLevelInput = document.querySelector("#pulseLevelInput");
+const pulseMoveInput = document.querySelector("#pulseMoveInput");
+const pulseLevelCount = document.querySelector("#pulseLevelCount");
+const pulseMoveCount = document.querySelector("#pulseMoveCount");
 const pulseReady = document.querySelector("#pulseReady");
 const pulseList = document.querySelector("#pulseList");
+const copyPulseButton = document.querySelector("#copyPulseButton");
+const copyPulseButtonLabel = document.querySelector("#copyPulseButtonLabel");
 const historyBody = document.querySelector("#historyBody");
 const historyNote = document.querySelector("#historyNote");
 const refreshHistoryButton = document.querySelector("#refreshHistoryButton");
@@ -94,6 +98,7 @@ let autoRefreshTimer = null;
 let autoRefreshTicker = null;
 let autoRefreshDeadline = null;
 let queryInProgress = false;
+let pulseBrief = "";
 const HISTORY_FETCH_LIMIT = 500;
 const HISTORY_TABLE_LIMIT = 25;
 const SCANNER_LIST_LIMIT = 12;
@@ -146,6 +151,8 @@ const rememberedControls = [
   allowExtrapolationInput,
   autoRefreshSelect,
   resultSortSelect,
+  pulseLevelInput,
+  pulseMoveInput,
 ];
 const chartColors = [
   "#0b8f83",
@@ -747,25 +754,93 @@ function renderScanner(rows) {
   }
 }
 
+function pulseThresholds() {
+  const level = optionalNumber(pulseLevelInput.value);
+  const move = optionalNumber(pulseMoveInput.value);
+  return {
+    level: Math.max(0, Math.min(level === null ? 30 : level, 1000)),
+    move: Math.max(0, Math.min(move === null ? 10 : move, 1000)),
+  };
+}
+
+function buildPulseBrief(items, signals, thresholds) {
+  const rules = `Rules: level ≥ ${formatValue(thresholds.level)} · move ≥ ${formatValue(thresholds.move)}%`;
+  const lines = signals.length
+    ? signals.slice(0, 6).map((signal) => `- ${signal.row.symbol}: ${signal.label} · ${signal.detail}`)
+    : ["- No current readings meet the configured alert rules."];
+  return [
+    "AssetVIX Risk Pulse",
+    `Generated: ${new Date().toLocaleString()}`,
+    rules,
+    `Usable readings: ${items.length}`,
+    "",
+    ...lines,
+  ].join("\n");
+}
+
+function fallbackCopyText(value) {
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  try {
+    textarea.select();
+    return typeof document.execCommand === "function" && document.execCommand("copy");
+  } catch (_error) {
+    return false;
+  } finally {
+    textarea.remove();
+  }
+}
+
+async function copyPulseBrief() {
+  if (!pulseBrief) return;
+  copyPulseButton.disabled = true;
+  copyPulseButtonLabel.textContent = "Copying…";
+  let copied = false;
+  try {
+    if (navigator.clipboard?.writeText && window.isSecureContext) {
+      await navigator.clipboard.writeText(pulseBrief);
+      copied = true;
+    } else {
+      copied = fallbackCopyText(pulseBrief);
+    }
+  } catch (_error) {
+    copied = fallbackCopyText(pulseBrief);
+  }
+  copyPulseButtonLabel.textContent = copied ? "Copied" : "Copy failed";
+  window.setTimeout(() => {
+    copyPulseButtonLabel.textContent = "Copy brief";
+    copyPulseButton.disabled = !pulseBrief;
+  }, 1600);
+}
+
 function renderRiskPulse(rows) {
+  const thresholds = pulseThresholds();
   const items = rows
-    .filter((row) => rowAssetVix(row) !== null)
-    .map((row) => ({
-      row,
-      baseline: historyBaseline(row),
-      changePercent: optionalNumber(row.change_from_previous_pct),
+    .map((row) => ({ row, value: rowAssetVix(row) }))
+    .filter((item) => item.value !== null)
+    .map((item) => ({
+      ...item,
+      baseline: historyBaseline(item.row),
+      changePercent: optionalNumber(item.row.change_from_previous_pct),
     }));
-  const elevated = items.filter((item) => item.baseline.regime === "high");
-  const sharpMoves = items.filter(
-    (item) => item.changePercent !== null && Math.abs(item.changePercent) >= 10
+  const levelAlerts = items.filter((item) => item.value >= thresholds.level);
+  const moveAlerts = items.filter(
+    (item) => item.changePercent !== null && Math.abs(item.changePercent) >= thresholds.move
   );
   const baselineReady = items.filter((item) => item.baseline.ready);
-  pulseElevated.textContent = String(elevated.length);
-  pulseMoves.textContent = String(sharpMoves.length);
+  pulseLevelCount.textContent = String(levelAlerts.length);
+  pulseMoveCount.textContent = String(moveAlerts.length);
   pulseReady.textContent = `${baselineReady.length}/${items.length}`;
   pulseList.innerHTML = "";
+  copyPulseButtonLabel.textContent = "Copy brief";
 
   if (!items.length) {
+    pulseBrief = "";
+    copyPulseButton.disabled = true;
     pulseNote.textContent = rows.length
       ? "No usable 30D values to interpret in this run"
       : "Calculate a basket to surface priority volatility signals";
@@ -773,22 +848,31 @@ function renderRiskPulse(rows) {
     return;
   }
 
-  pulseNote.textContent = `${baselineReady.length}/${items.length} symbols have a usable history baseline (3+ prior records)`;
+  copyPulseButton.disabled = false;
+  pulseNote.textContent = `Rules: level ≥ ${formatValue(thresholds.level)} · move ≥ ${formatValue(thresholds.move)}% · ${baselineReady.length}/${items.length} history baselines`;
   const signals = items
     .map((item) => {
-      const isElevated = item.baseline.regime === "high";
-      const isSharp = item.changePercent !== null && Math.abs(item.changePercent) >= 10;
-      if (!isElevated && !isSharp) return null;
-      const kind = isElevated && isSharp ? "priority" : isElevated ? "elevated" : "moving";
-      const label = isElevated ? "Elevated" : item.changePercent > 0 ? "Rising" : "Cooling";
+      const isLevel = item.value >= thresholds.level;
+      const isHistoryHigh = item.baseline.regime === "high";
+      const isMove = item.changePercent !== null && Math.abs(item.changePercent) >= thresholds.move;
+      if (!isLevel && !isHistoryHigh && !isMove) return null;
+      const triggerCount = Number(isLevel) + Number(isHistoryHigh) + Number(isMove);
+      const kind = triggerCount >= 2 ? "priority" : isLevel || isHistoryHigh ? "elevated" : "moving";
+      const label = isLevel
+        ? "Level alert"
+        : isHistoryHigh
+          ? "History high"
+          : item.changePercent > 0
+            ? "Rising"
+            : "Cooling";
       const detail = [
-        isElevated ? `${formatPercentile(item.baseline.percentile)} percentile` : "",
-        isSharp ? `${formatSignedPercent(item.changePercent)} since prior` : "",
+        isLevel ? `${formatValue(item.value)} ≥ ${formatValue(thresholds.level)}` : "",
+        isHistoryHigh ? `${formatPercentile(item.baseline.percentile)} percentile` : "",
+        isMove ? `${formatSignedPercent(item.changePercent)} since prior` : "",
       ]
         .filter(Boolean)
         .join(" · ");
-      const strength = (isElevated ? 2 : 0) + (isSharp ? 1 : 0);
-      return { ...item, kind, label, detail, strength };
+      return { ...item, kind, label, detail, strength: triggerCount };
     })
     .filter(Boolean)
     .sort((left, right) => {
@@ -796,8 +880,9 @@ function renderRiskPulse(rows) {
       return Math.abs(right.changePercent || 0) - Math.abs(left.changePercent || 0);
     });
 
+  pulseBrief = buildPulseBrief(items, signals, thresholds);
   if (!signals.length) {
-    pulseList.innerHTML = '<p class="pulse-empty">No elevated-history or sharp-move signals in this run</p>';
+    pulseList.innerHTML = '<p class="pulse-empty">No current readings meet the configured alert rules</p>';
     return;
   }
 
@@ -1355,6 +1440,13 @@ autoRefreshSelect.addEventListener("change", () => {
   scheduleAutoRefresh();
 });
 resultSortSelect.addEventListener("change", () => renderRows(latestRows, { markRun: false }));
+for (const control of [pulseLevelInput, pulseMoveInput]) {
+  control.addEventListener("input", () => {
+    saveSettings();
+    renderRiskPulse(latestRows);
+  });
+}
+copyPulseButton.addEventListener("click", copyPulseBrief);
 chartSymbolSelect.addEventListener("change", () => renderChart(historyRows));
 window.addEventListener("resize", () => renderChart(historyRows));
 document.addEventListener("visibilitychange", () => {
@@ -1373,6 +1465,7 @@ loadSettings();
 renderSavedLists();
 setRunExportState();
 updateResultSummary([]);
+renderRiskPulse([]);
 renderHistorySummary(null);
 updateFilteredHistoryLinks();
 scheduleAutoRefresh();

@@ -300,16 +300,30 @@
                 <h2>Risk Pulse</h2>
                 <p id="pulseNote">Calculate a basket to surface priority volatility signals</p>
               </div>
-              <span class="pulse-disclaimer">Screening aid · not investment advice</span>
+              <div class="pulse-tools">
+                <label class="pulse-threshold-control">
+                  <span>Level ≥</span>
+                  <input id="pulseLevelInput" type="number" min="0" max="1000" step="1" value="30" aria-label="Pulse level alert threshold" />
+                </label>
+                <label class="pulse-threshold-control">
+                  <span>Move ≥</span>
+                  <input id="pulseMoveInput" type="number" min="0" max="1000" step="1" value="10" aria-label="Pulse move alert threshold percent" />
+                  <em>%</em>
+                </label>
+                <button id="copyPulseButton" class="pulse-copy-button" type="button" disabled>
+                  <span id="copyPulseButtonLabel">Copy brief</span>
+                </button>
+                <span class="pulse-disclaimer">Screening aid · not investment advice</span>
+              </div>
             </div>
             <div class="pulse-summary">
               <div>
-                <span>Elevated</span>
-                <strong id="pulseElevated">0</strong>
+                <span>Level alerts</span>
+                <strong id="pulseLevelCount">0</strong>
               </div>
               <div>
-                <span>Sharp moves</span>
-                <strong id="pulseMoves">0</strong>
+                <span>Move alerts</span>
+                <strong id="pulseMoveCount">0</strong>
               </div>
               <div>
                 <span>Baseline ready</span>

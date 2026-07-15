@@ -87,6 +87,8 @@ python3 asset_vix.py --symbols SPY,QQQ --mode delayed --json --fail-on-non-ok
   only after at least three prior usable local observations
 - Risk Pulse panel that groups elevated-history readings and sharp run-to-run
   moves into a compact, clickable monitoring shortlist
+- Browser-saved Risk Pulse level and percentage-move thresholds, with a
+  one-click plain-text briefing for a research log or team update
 - Current-run CSV and JSON exports from the results table
 - Filtered history CSV and JSON exports from the selected history view
 - Current-run summary for OK, warning, error, and average 30-day values

@@ -7,6 +7,16 @@ All notable project changes are summarized here.
 - Reworked the GitHub README homepage so the formula section uses stable
   plain-text notation instead of Markdown math blocks.
 
+## 1.11.0 - 2026-07-15
+
+- Added editable, browser-saved Risk Pulse thresholds for absolute AssetVIX
+  level and percentage move alerts; the panel updates immediately without a
+  second market-data query.
+- Added a one-click, plain-text Risk Pulse brief for research notes and team
+  updates, including the configured rules and prioritized signals.
+- Refined the Risk Pulse header into a compact monitoring tool strip and
+  refreshed the GitHub preview to show threshold-driven alerts in context.
+
 ## 1.10.0 - 2026-07-14
 
 - Added per-symbol historical-baseline context to each new calculation: usable
