@@ -12,6 +12,8 @@ const savedListSelect = document.querySelector("#savedListSelect");
 const saveListButton = document.querySelector("#saveListButton");
 const loadListButton = document.querySelector("#loadListButton");
 const deleteListButton = document.querySelector("#deleteListButton");
+const shareSetupButton = document.querySelector("#shareSetupButton");
+const shareSetupButtonLabel = document.querySelector("#shareSetupButtonLabel");
 const modeSelect = document.querySelector("#modeSelect");
 const fallbackSelect = document.querySelector("#fallbackSelect");
 const strikeLimitInput = document.querySelector("#strikeLimitInput");
@@ -105,6 +107,24 @@ const SCANNER_LIST_LIMIT = 12;
 const ALL_SYMBOLS = "__all__";
 const SETTINGS_KEY = "assetvix.query-settings.v1";
 const CUSTOM_LISTS_KEY = "assetvix.custom-symbol-lists.v1";
+const SHARE_SETUP_MARKER = "setup";
+const SHARE_SYMBOLS_LIMIT = 4096;
+const SHARE_SETUP_FIELDS = [
+  { key: "m", control: modeSelect, type: "select" },
+  { key: "f", control: fallbackSelect, type: "select" },
+  { key: "sl", control: strikeLimitInput, type: "number" },
+  { key: "qa", control: quoteAgeInput, type: "number" },
+  { key: "oi", control: minOpenInterestInput, type: "optional-number" },
+  { key: "vol", control: minVolumeInput, type: "optional-number" },
+  { key: "r", control: riskFreeRateInput, type: "optional-number" },
+  { key: "ms", control: minSideStrikesInput, type: "number" },
+  { key: "sp", control: spreadInput, type: "number" },
+  { key: "d", control: delayInput, type: "number" },
+  { key: "st", control: allowStaleInput, type: "checkbox" },
+  { key: "ex", control: allowExtrapolationInput, type: "checkbox" },
+  { key: "rl", control: pulseLevelInput, type: "number" },
+  { key: "rm", control: pulseMoveInput, type: "number" },
+];
 const RUN_EXPORT_FIELDS = [
   "recorded_at_utc",
   "run_id",
@@ -278,6 +298,60 @@ function loadSettings() {
   } catch (_error) {
     // Ignore malformed or unavailable browser storage.
   }
+}
+
+function numberWithinInputBounds(control, value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return false;
+  const minimum = Number(control.min);
+  const maximum = Number(control.max);
+  if (control.min !== "" && numeric < minimum) return false;
+  if (control.max !== "" && numeric > maximum) return false;
+  return true;
+}
+
+function canSelectValue(control, value) {
+  return Array.from(control.options).some((option) => option.value === value);
+}
+
+function applySharedSetup() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get(SHARE_SETUP_MARKER) !== "1") return false;
+
+  const symbols = params.get("s");
+  if (symbols !== null && symbols.length <= SHARE_SYMBOLS_LIMIT) {
+    symbolsInput.value = symbols;
+  }
+
+  for (const field of SHARE_SETUP_FIELDS) {
+    if (!params.has(field.key)) continue;
+    const value = params.get(field.key) || "";
+    if (field.type === "checkbox") {
+      field.control.checked = value === "1";
+    } else if (field.type === "select") {
+      if (canSelectValue(field.control, value)) field.control.value = value;
+    } else if (field.type === "optional-number" && value === "") {
+      field.control.value = "";
+    } else if (numberWithinInputBounds(field.control, value)) {
+      field.control.value = value;
+    }
+  }
+
+  saveSettings();
+  return true;
+}
+
+function sharedSetupUrl() {
+  const url = new URL(window.location.href);
+  const params = new URLSearchParams();
+  params.set(SHARE_SETUP_MARKER, "1");
+  params.set("s", symbolsInput.value.trim());
+  for (const field of SHARE_SETUP_FIELDS) {
+    params.set(field.key, field.type === "checkbox" ? (field.control.checked ? "1" : "0") : field.control.value);
+  }
+  url.search = params.toString();
+  url.hash = "";
+  return url.toString();
 }
 
 function normalizeListName(value) {
@@ -793,6 +867,28 @@ function fallbackCopyText(value) {
   } finally {
     textarea.remove();
   }
+}
+
+async function copySharedSetup() {
+  const url = sharedSetupUrl();
+  shareSetupButton.disabled = true;
+  shareSetupButtonLabel.textContent = "Copying…";
+  let copied = false;
+  try {
+    if (navigator.clipboard?.writeText && window.isSecureContext) {
+      await navigator.clipboard.writeText(url);
+      copied = true;
+    } else {
+      copied = fallbackCopyText(url);
+    }
+  } catch (_error) {
+    copied = fallbackCopyText(url);
+  }
+  shareSetupButtonLabel.textContent = copied ? "Link copied" : "Copy failed";
+  window.setTimeout(() => {
+    shareSetupButtonLabel.textContent = "Share setup";
+    shareSetupButton.disabled = false;
+  }, 1800);
 }
 
 async function copyPulseBrief() {
@@ -1427,6 +1523,7 @@ saveTokenButton.addEventListener("click", saveToken);
 saveListButton.addEventListener("click", saveCurrentList);
 loadListButton.addEventListener("click", loadSelectedList);
 deleteListButton.addEventListener("click", deleteSelectedList);
+shareSetupButton.addEventListener("click", copySharedSetup);
 savedListSelect.addEventListener("change", () => renderSavedLists(savedListSelect.value));
 downloadRunCsvButton.addEventListener("click", () => exportCurrentRun("csv"));
 downloadRunJsonButton.addEventListener("click", () => exportCurrentRun("json"));
@@ -1462,6 +1559,7 @@ tokenInput.addEventListener("keydown", (event) => {
 queryButton.addEventListener("click", runQuery);
 
 loadSettings();
+applySharedSetup();
 renderSavedLists();
 setRunExportState();
 updateResultSummary([]);

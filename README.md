@@ -32,11 +32,11 @@ monitoring, and prototyping rather than for publishing an official index.
 ![AssetVIX local web app preview](docs/assetvix-web-preview.png)
 
 The preview uses sample values to show the local workflow: choose or save a
-symbol list, set quote-quality controls, calculate VIX-style 30-day implied
-volatility, review the run summary, export the current run, review per-symbol
-diagnostics, inspect filtered history analytics, and export filtered recorded
-history. Actual calculations require your own MarketData.app token and live,
-delayed, or cached option-chain access.
+symbol list, set quote-quality controls, share the non-sensitive research
+setup, calculate VIX-style 30-day implied volatility, review the run summary,
+export the current run, review per-symbol diagnostics, inspect filtered history
+analytics, and export filtered recorded history. Actual calculations require
+your own MarketData.app token and live, delayed, or cached option-chain access.
 
 Quick start:
 
@@ -89,6 +89,9 @@ python3 asset_vix.py --symbols SPY,QQQ --mode delayed --json --fail-on-non-ok
   moves into a compact, clickable monitoring shortlist
 - Browser-saved Risk Pulse level and percentage-move thresholds, with a
   one-click plain-text briefing for a research log or team update
+- One-click shareable research-setup links for symbols, data mode, quality
+  filters, and Risk Pulse rules; tokens, results, and local history are never
+  included
 - Current-run CSV and JSON exports from the results table
 - Filtered history CSV and JSON exports from the selected history view
 - Current-run summary for OK, warning, error, and average 30-day values

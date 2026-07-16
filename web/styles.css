@@ -331,6 +331,57 @@ textarea:focus {
   grid-template-columns: 1fr 44px 44px;
 }
 
+.share-setup {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  margin-top: 10px;
+  padding: 9px 10px;
+  border: 1px solid rgba(11, 143, 131, 0.18);
+  border-radius: 12px;
+  background: linear-gradient(125deg, rgba(11, 143, 131, 0.1), rgba(255, 255, 255, 0.76));
+}
+
+.share-setup-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid rgba(8, 119, 95, 0.28);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--accent-dark);
+  font-size: 11px;
+  font-weight: 820;
+  white-space: nowrap;
+}
+
+.share-setup-button:hover:not(:disabled) {
+  border-color: var(--accent);
+  box-shadow: 0 5px 12px rgba(8, 119, 95, 0.12);
+  transform: translateY(-1px);
+}
+
+.share-setup-button svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.share-setup p {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
 .grid-two {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1534,6 +1585,15 @@ tbody tr:hover {
 }
 
 @media (max-width: 900px) {
+  .share-setup {
+    grid-template-columns: 1fr;
+    gap: 7px;
+  }
+
+  .share-setup-button {
+    justify-self: start;
+  }
+
   .pulse-summary {
     grid-template-columns: 1fr;
   }

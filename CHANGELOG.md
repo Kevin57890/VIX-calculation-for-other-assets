@@ -7,6 +7,16 @@ All notable project changes are summarized here.
 - Reworked the GitHub README homepage so the formula section uses stable
   plain-text notation instead of Markdown math blocks.
 
+## 1.12.0 - 2026-07-15
+
+- Added one-click, reproducible research-setup links that restore symbols,
+  data mode, quote-quality controls, and Risk Pulse rules without starting a
+  market-data request.
+- Kept setup links deliberately non-sensitive: they exclude MarketData.app
+  tokens, calculation results, and browser-local history.
+- Added a compact setup-sharing control to the research basket panel and
+  refreshed the GitHub preview to show the new collaboration workflow.
+
 ## 1.11.0 - 2026-07-15
 
 - Added editable, browser-saved Risk Pulse thresholds for absolute AssetVIX
