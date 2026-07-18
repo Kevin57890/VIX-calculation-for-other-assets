@@ -619,6 +619,37 @@ textarea:focus {
   flex-wrap: wrap;
 }
 
+.result-focus-control {
+  display: grid;
+  gap: 4px;
+  min-width: 148px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 820;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.result-focus-control select {
+  min-height: 36px;
+  padding: 7px 10px;
+  border-color: rgba(11, 143, 131, 0.28);
+  background: linear-gradient(135deg, rgba(11, 143, 131, 0.08), #ffffff);
+  color: var(--accent-dark);
+  font-size: 12px;
+  font-weight: 760;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.table-head .result-focus-note {
+  min-height: 18px;
+  margin-top: 3px;
+  color: var(--accent-dark);
+  font-size: 12px;
+  font-weight: 720;
+}
+
 .result-summary {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -1064,6 +1095,10 @@ tbody tr:hover {
 
   .token-actions {
     justify-content: flex-start;
+  }
+
+  .result-focus-control {
+    width: min(220px, 100%);
   }
 
   .workspace {

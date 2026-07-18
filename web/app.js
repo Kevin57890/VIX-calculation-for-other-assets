@@ -38,6 +38,8 @@ const queryButton = document.querySelector("#queryButton");
 const queryButtonLabel = document.querySelector("#queryButtonLabel");
 const resultsBody = document.querySelector("#resultsBody");
 const lastRun = document.querySelector("#lastRun");
+const resultFocusNote = document.querySelector("#resultFocusNote");
+const resultFocusSelect = document.querySelector("#resultFocusSelect");
 const resultSortSelect = document.querySelector("#resultSortSelect");
 const scannerNote = document.querySelector("#scannerNote");
 const scannerHigh = document.querySelector("#scannerHigh");
@@ -177,6 +179,7 @@ const rememberedControls = [
   allowStaleInput,
   allowExtrapolationInput,
   autoRefreshSelect,
+  resultFocusSelect,
   resultSortSelect,
   pulseLevelInput,
   pulseMoveInput,
@@ -568,6 +571,48 @@ function updateResultSummary(rows) {
   summaryWarn.textContent = String(counts.warn);
   summaryError.textContent = String(counts.error);
   summaryAverage.textContent = average === null ? "--" : formatValue(average);
+}
+
+function focusLabel() {
+  const labels = {
+    all: "All readings",
+    signals: "Actionable signals",
+    attention: "Warnings & errors",
+    baseline: "Baseline building",
+  };
+  return labels[resultFocusSelect.value] || labels.all;
+}
+
+function isRiskSignal(row, thresholds = pulseThresholds()) {
+  const value = rowAssetVix(row);
+  if (value === null) return false;
+  const baseline = historyBaseline(row);
+  const changePercent = optionalNumber(row.change_from_previous_pct);
+  return (
+    value >= thresholds.level ||
+    baseline.regime === "high" ||
+    (changePercent !== null && Math.abs(changePercent) >= thresholds.move)
+  );
+}
+
+function focusedResultRows(rows) {
+  const focus = resultFocusSelect.value;
+  if (focus === "signals") return rows.filter((row) => isRiskSignal(row));
+  if (focus === "attention") return rows.filter((row) => badgeClass(row.status) !== "ok");
+  if (focus === "baseline") return rows.filter((row) => !historyBaseline(row).ready);
+  return rows;
+}
+
+function updateResultFocusNote(visibleRows, allRows) {
+  if (!allRows.length) {
+    resultFocusNote.textContent = "Run a calculation to focus the table";
+    return;
+  }
+  const label = focusLabel();
+  resultFocusNote.textContent =
+    resultFocusSelect.value === "all"
+      ? `Showing all ${allRows.length} results`
+      : `Showing ${visibleRows.length} of ${allRows.length} · ${label}`;
 }
 
 function csvExportValue(value) {
@@ -1122,13 +1167,19 @@ function renderRows(rows, { markRun = true } = {}) {
   renderRiskPulse(rows);
   renderScanner(rows);
   resultsBody.innerHTML = "";
+  const visibleRows = focusedResultRows(rows);
+  updateResultFocusNote(visibleRows, rows);
   if (!rows.length) {
     resultsBody.innerHTML = '<tr><td colspan="8" class="empty">No results</td></tr>';
     updateMain(null);
     return;
   }
 
-  for (const row of sortedResultRows(rows)) {
+  if (!visibleRows.length) {
+    resultsBody.innerHTML = `<tr><td colspan="8" class="empty">No ${escapeHtml(focusLabel().toLowerCase())} in this run</td></tr>`;
+  }
+
+  for (const row of sortedResultRows(visibleRows)) {
     const tr = document.createElement("tr");
     const quoteAge =
       row.max_quote_age_minutes === null || row.max_quote_age_minutes === undefined
@@ -1656,10 +1707,11 @@ autoRefreshSelect.addEventListener("change", () => {
   scheduleAutoRefresh();
 });
 resultSortSelect.addEventListener("change", () => renderRows(latestRows, { markRun: false }));
+resultFocusSelect.addEventListener("change", () => renderRows(latestRows, { markRun: false }));
 for (const control of [pulseLevelInput, pulseMoveInput]) {
   control.addEventListener("input", () => {
     saveSettings();
-    renderRiskPulse(latestRows);
+    renderRows(latestRows, { markRun: false });
   });
 }
 copyPulseButton.addEventListener("click", copyPulseBrief);

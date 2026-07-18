@@ -291,8 +291,18 @@
               <div>
                 <h2>Results</h2>
                 <p id="lastRun">Not run yet</p>
+                <p id="resultFocusNote" class="result-focus-note" aria-live="polite">Showing all results</p>
               </div>
               <div class="result-actions">
+                <label class="result-focus-control">
+                  <span>Focus</span>
+                  <select id="resultFocusSelect">
+                    <option value="all">All readings</option>
+                    <option value="signals">Actionable signals</option>
+                    <option value="attention">Warnings &amp; errors</option>
+                    <option value="baseline">Baseline building</option>
+                  </select>
+                </label>
                 <button id="downloadRunCsvButton" class="secondary-button" type="button" disabled>
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M12 3v12" />

@@ -7,6 +7,16 @@ All notable project changes are summarized here.
 - Reworked the GitHub README homepage so the formula section uses stable
   plain-text notation instead of Markdown math blocks.
 
+## 1.14.0 - 2026-07-18
+
+- Added a browser-saved Results Focus control for isolating actionable Risk
+  Pulse signals, data warnings/errors, or symbols whose historical baseline is
+  still building—without an additional market-data request.
+- Kept the complete run summary, Scanner, and exports visible while focusing
+  the detailed table, so triage never loses the broader basket context.
+- Refined the Results toolbar with a compact focus selector and refreshed the
+  GitHub preview to show the prioritization workflow.
+
 ## 1.13.0 - 2026-07-16
 
 - Added browser-saved Research Profiles for returning to a complete scan setup:
