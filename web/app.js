@@ -12,6 +12,12 @@ const savedListSelect = document.querySelector("#savedListSelect");
 const saveListButton = document.querySelector("#saveListButton");
 const loadListButton = document.querySelector("#loadListButton");
 const deleteListButton = document.querySelector("#deleteListButton");
+const profileNameInput = document.querySelector("#profileNameInput");
+const savedProfileSelect = document.querySelector("#savedProfileSelect");
+const saveProfileButton = document.querySelector("#saveProfileButton");
+const loadProfileButton = document.querySelector("#loadProfileButton");
+const deleteProfileButton = document.querySelector("#deleteProfileButton");
+const profileNote = document.querySelector("#profileNote");
 const shareSetupButton = document.querySelector("#shareSetupButton");
 const shareSetupButtonLabel = document.querySelector("#shareSetupButtonLabel");
 const modeSelect = document.querySelector("#modeSelect");
@@ -107,6 +113,7 @@ const SCANNER_LIST_LIMIT = 12;
 const ALL_SYMBOLS = "__all__";
 const SETTINGS_KEY = "assetvix.query-settings.v1";
 const CUSTOM_LISTS_KEY = "assetvix.custom-symbol-lists.v1";
+const RESEARCH_PROFILES_KEY = "assetvix.research-profiles.v1";
 const SHARE_SETUP_MARKER = "setup";
 const SHARE_SYMBOLS_LIMIT = 4096;
 const SHARE_SETUP_FIELDS = [
@@ -314,40 +321,70 @@ function canSelectValue(control, value) {
   return Array.from(control.options).some((option) => option.value === value);
 }
 
-function applySharedSetup() {
-  const params = new URLSearchParams(window.location.search);
-  if (params.get(SHARE_SETUP_MARKER) !== "1") return false;
+function currentResearchSetup() {
+  const values = {};
+  for (const field of SHARE_SETUP_FIELDS) {
+    values[field.key] = field.type === "checkbox" ? (field.control.checked ? "1" : "0") : field.control.value;
+  }
+  return { symbols: symbolsInput.value.trim(), values };
+}
 
-  const symbols = params.get("s");
+function applyResearchSetup(setup) {
+  if (!setup || typeof setup !== "object" || Array.isArray(setup)) return false;
+  let applied = false;
+  const symbols = typeof setup.symbols === "string" ? setup.symbols : null;
   if (symbols !== null && symbols.length <= SHARE_SYMBOLS_LIMIT) {
     symbolsInput.value = symbols;
+    applied = true;
+  }
+  const values = setup.values;
+  if (!values || typeof values !== "object" || Array.isArray(values)) {
+    if (applied) saveSettings();
+    return applied;
   }
 
   for (const field of SHARE_SETUP_FIELDS) {
-    if (!params.has(field.key)) continue;
-    const value = params.get(field.key) || "";
+    if (!Object.prototype.hasOwnProperty.call(values, field.key)) continue;
+    const value = String(values[field.key] ?? "");
     if (field.type === "checkbox") {
       field.control.checked = value === "1";
+      applied = true;
     } else if (field.type === "select") {
-      if (canSelectValue(field.control, value)) field.control.value = value;
+      if (canSelectValue(field.control, value)) {
+        field.control.value = value;
+        applied = true;
+      }
     } else if (field.type === "optional-number" && value === "") {
       field.control.value = "";
+      applied = true;
     } else if (numberWithinInputBounds(field.control, value)) {
       field.control.value = value;
+      applied = true;
     }
   }
 
-  saveSettings();
-  return true;
+  if (applied) saveSettings();
+  return applied;
+}
+
+function applySharedSetup() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get(SHARE_SETUP_MARKER) !== "1") return false;
+  const values = {};
+  for (const field of SHARE_SETUP_FIELDS) {
+    if (params.has(field.key)) values[field.key] = params.get(field.key) || "";
+  }
+  return applyResearchSetup({ symbols: params.get("s"), values });
 }
 
 function sharedSetupUrl() {
   const url = new URL(window.location.href);
   const params = new URLSearchParams();
+  const setup = currentResearchSetup();
   params.set(SHARE_SETUP_MARKER, "1");
-  params.set("s", symbolsInput.value.trim());
+  params.set("s", setup.symbols);
   for (const field of SHARE_SETUP_FIELDS) {
-    params.set(field.key, field.type === "checkbox" ? (field.control.checked ? "1" : "0") : field.control.value);
+    params.set(field.key, setup.values[field.key]);
   }
   url.search = params.toString();
   url.hash = "";
@@ -429,6 +466,84 @@ function deleteSelectedList() {
   delete lists[name];
   storeCustomLists(lists);
   renderSavedLists();
+}
+
+function loadResearchProfiles() {
+  try {
+    const profiles = JSON.parse(window.localStorage.getItem(RESEARCH_PROFILES_KEY) || "{}");
+    if (!profiles || typeof profiles !== "object" || Array.isArray(profiles)) return {};
+    return Object.fromEntries(
+      Object.entries(profiles)
+        .filter((entry) => typeof entry[0] === "string" && entry[1] && typeof entry[1] === "object")
+        .map(([name, setup]) => [normalizeListName(name), setup])
+        .filter(([name, setup]) => name && !Array.isArray(setup))
+    );
+  } catch (_error) {
+    return {};
+  }
+}
+
+function storeResearchProfiles(profiles) {
+  try {
+    window.localStorage.setItem(RESEARCH_PROFILES_KEY, JSON.stringify(profiles));
+    return true;
+  } catch (_error) {
+    profileNote.textContent = "Could not save this profile in this browser";
+    return false;
+  }
+}
+
+function renderResearchProfiles(selected = "") {
+  const profiles = loadResearchProfiles();
+  const names = Object.keys(profiles).sort((left, right) => left.localeCompare(right));
+  savedProfileSelect.innerHTML = '<option value="">None</option>';
+  for (const name of names) {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    savedProfileSelect.appendChild(option);
+  }
+  savedProfileSelect.value = names.includes(selected) ? selected : "";
+  loadProfileButton.disabled = !savedProfileSelect.value;
+  deleteProfileButton.disabled = !savedProfileSelect.value;
+}
+
+function saveCurrentProfile() {
+  const name = normalizeListName(profileNameInput.value);
+  const setup = currentResearchSetup();
+  if (!name) {
+    profileNameInput.focus();
+    return;
+  }
+  if (!setup.symbols) {
+    symbolsInput.focus();
+    return;
+  }
+  const profiles = loadResearchProfiles();
+  profiles[name] = setup;
+  if (!storeResearchProfiles(profiles)) return;
+  profileNameInput.value = "";
+  renderResearchProfiles(name);
+  profileNote.textContent = `Saved “${name}” locally`;
+}
+
+function loadSelectedProfile() {
+  const name = savedProfileSelect.value;
+  const profile = loadResearchProfiles()[name];
+  if (!name || !applyResearchSetup(profile)) return;
+  renderRiskPulse(latestRows);
+  clearAutoRefresh("Profile loaded — click Calculate to apply");
+  profileNote.textContent = `Loaded “${name}” — click Calculate to apply`;
+}
+
+function deleteSelectedProfile() {
+  const name = savedProfileSelect.value;
+  if (!name) return;
+  const profiles = loadResearchProfiles();
+  delete profiles[name];
+  if (!storeResearchProfiles(profiles)) return;
+  renderResearchProfiles();
+  profileNote.textContent = `Deleted “${name}”`;
 }
 
 function setRunExportState() {
@@ -1523,6 +1638,10 @@ saveTokenButton.addEventListener("click", saveToken);
 saveListButton.addEventListener("click", saveCurrentList);
 loadListButton.addEventListener("click", loadSelectedList);
 deleteListButton.addEventListener("click", deleteSelectedList);
+saveProfileButton.addEventListener("click", saveCurrentProfile);
+loadProfileButton.addEventListener("click", loadSelectedProfile);
+deleteProfileButton.addEventListener("click", deleteSelectedProfile);
+savedProfileSelect.addEventListener("change", () => renderResearchProfiles(savedProfileSelect.value));
 shareSetupButton.addEventListener("click", copySharedSetup);
 savedListSelect.addEventListener("change", () => renderSavedLists(savedListSelect.value));
 downloadRunCsvButton.addEventListener("click", () => exportCurrentRun("csv"));
@@ -1561,6 +1680,7 @@ queryButton.addEventListener("click", runQuery);
 loadSettings();
 applySharedSetup();
 renderSavedLists();
+renderResearchProfiles();
 setRunExportState();
 updateResultSummary([]);
 renderRiskPulse([]);

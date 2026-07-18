@@ -7,6 +7,17 @@ All notable project changes are summarized here.
 - Reworked the GitHub README homepage so the formula section uses stable
   plain-text notation instead of Markdown math blocks.
 
+## 1.13.0 - 2026-07-16
+
+- Added browser-saved Research Profiles for returning to a complete scan setup:
+  symbols, data mode, quote-quality controls, and Risk Pulse rules are stored
+  locally while MarketData.app Tokens remain excluded.
+- Made profile loading intentionally non-executing and pause active monitoring
+  until the user clicks Calculate, preventing accidental market-data requests
+  after a context switch.
+- Added a refined local-profile panel to the research basket controls and
+  refreshed the GitHub preview to surface the reusable-workflow layer.
+
 ## 1.12.0 - 2026-07-15
 
 - Added one-click, reproducible research-setup links that restore symbols,
