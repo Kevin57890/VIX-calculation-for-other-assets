@@ -142,6 +142,27 @@
               </div>
               <p id="profileNote" class="profile-note" aria-live="polite">Save symbols, filters, and Risk Pulse rules — never your Token.</p>
             </div>
+            <div class="signal-queue" id="signalQueuePanel">
+              <div class="profile-heading">
+                <span>Signal Queue</span>
+                <small>Local only</small>
+              </div>
+              <div id="signalQueueSymbols" class="signal-queue-symbols" aria-live="polite"></div>
+              <div class="signal-queue-actions">
+                <button id="loadSignalQueueButton" class="secondary-button" type="button" disabled>
+                  <span>Load queue</span>
+                </button>
+                <button id="clearSignalQueueButton" class="icon-button danger-button" type="button" title="Clear signal queue" disabled>
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M3 6h18" />
+                    <path d="M8 6V4h8v2" />
+                    <path d="m19 6-1 14H6L5 6" />
+                    <path d="M10 11v5M14 11v5" />
+                  </svg>
+                </button>
+              </div>
+              <p id="signalQueueNote" class="profile-note" aria-live="polite">Queue current Risk Pulse signals for a deliberate follow-up scan.</p>
+            </div>
             <div class="share-setup">
               <button id="shareSetupButton" class="share-setup-button" type="button">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -294,6 +315,9 @@
             </div>
             <div class="run-brief-actions">
               <span id="runBriefStatus" class="run-brief-status">Awaiting run</span>
+              <button id="queueSignalsButton" class="run-brief-button" type="button" disabled>
+                <span id="queueSignalsButtonLabel">Queue signals</span>
+              </button>
               <button id="copyRunBriefButton" class="run-brief-button" type="button" disabled>
                 <span id="copyRunBriefButtonLabel">Copy run brief</span>
               </button>

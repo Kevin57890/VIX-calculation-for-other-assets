@@ -325,7 +325,7 @@ class ServerTokenTests(unittest.TestCase):
             )
 
             payload = json.loads(server.records_json_bytes(path))
-            self.assertEqual(payload["version"], "1.15.0")
+            self.assertEqual(payload["version"], "1.16.0")
             self.assertEqual(payload["count"], 1)
             self.assertEqual(payload["rows"][0]["symbol"], "SPY")
             self.assertIn("exported_at_utc", payload)
@@ -378,7 +378,7 @@ class ServerTokenTests(unittest.TestCase):
             self.assertEqual(rows[0]["reason"], "'=warn")
 
             payload = json.loads(server.history_json_bytes(path, limit=10, symbol="SPY", status="warn"))
-            self.assertEqual(payload["version"], "1.15.0")
+            self.assertEqual(payload["version"], "1.16.0")
             self.assertEqual(payload["count"], 1)
             self.assertEqual(payload["matchedCount"], 1)
             self.assertEqual(payload["totalCount"], 3)
@@ -613,7 +613,7 @@ class ServerTokenTests(unittest.TestCase):
         self.assertIn("Permissions-Policy:", headers)
         self.assertIn("Referrer-Policy: no-referrer", headers)
         self.assertIn("X-Content-Type-Options: nosniff", headers)
-        self.assertEqual(handler.version_string(), "AssetVIXLocal/1.15.0")
+        self.assertEqual(handler.version_string(), "AssetVIXLocal/1.16.0")
 
     def test_web_run_brief_controls_are_present(self):
         index = (server.WEB_DIR / "index.html").read_text(encoding="utf-8")
@@ -621,6 +621,14 @@ class ServerTokenTests(unittest.TestCase):
         self.assertIn('id="copyRunBriefButton"', index)
         self.assertIn("function buildRunBrief", script)
         self.assertIn("function renderRunBrief", script)
+
+    def test_web_signal_queue_controls_are_present(self):
+        index = (server.WEB_DIR / "index.html").read_text(encoding="utf-8")
+        script = (server.WEB_DIR / "app.js").read_text(encoding="utf-8")
+        self.assertIn('id="signalQueueSymbols"', index)
+        self.assertIn('id="queueSignalsButton"', index)
+        self.assertIn("function queueCurrentSignals", script)
+        self.assertIn("function loadSignalQueueIntoSymbols", script)
 
 
 if __name__ == "__main__":

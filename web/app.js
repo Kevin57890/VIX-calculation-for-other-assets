@@ -18,6 +18,10 @@ const saveProfileButton = document.querySelector("#saveProfileButton");
 const loadProfileButton = document.querySelector("#loadProfileButton");
 const deleteProfileButton = document.querySelector("#deleteProfileButton");
 const profileNote = document.querySelector("#profileNote");
+const signalQueueSymbols = document.querySelector("#signalQueueSymbols");
+const signalQueueNote = document.querySelector("#signalQueueNote");
+const loadSignalQueueButton = document.querySelector("#loadSignalQueueButton");
+const clearSignalQueueButton = document.querySelector("#clearSignalQueueButton");
 const shareSetupButton = document.querySelector("#shareSetupButton");
 const shareSetupButtonLabel = document.querySelector("#shareSetupButtonLabel");
 const modeSelect = document.querySelector("#modeSelect");
@@ -105,6 +109,8 @@ const runBriefStatus = document.querySelector("#runBriefStatus");
 const briefSignalCount = document.querySelector("#briefSignalCount");
 const briefUsableCount = document.querySelector("#briefUsableCount");
 const briefQualityCount = document.querySelector("#briefQualityCount");
+const queueSignalsButton = document.querySelector("#queueSignalsButton");
+const queueSignalsButtonLabel = document.querySelector("#queueSignalsButtonLabel");
 const copyRunBriefButton = document.querySelector("#copyRunBriefButton");
 const copyRunBriefButtonLabel = document.querySelector("#copyRunBriefButtonLabel");
 let tokenConfigured = false;
@@ -126,6 +132,8 @@ const ALL_SYMBOLS = "__all__";
 const SETTINGS_KEY = "assetvix.query-settings.v1";
 const CUSTOM_LISTS_KEY = "assetvix.custom-symbol-lists.v1";
 const RESEARCH_PROFILES_KEY = "assetvix.research-profiles.v1";
+const SIGNAL_QUEUE_KEY = "assetvix.signal-queue.v1";
+const SIGNAL_QUEUE_LIMIT = 50;
 const SHARE_SETUP_MARKER = "setup";
 const SHARE_SYMBOLS_LIMIT = 4096;
 const SHARE_SETUP_FIELDS = [
@@ -557,6 +565,89 @@ function deleteSelectedProfile() {
   if (!storeResearchProfiles(profiles)) return;
   renderResearchProfiles();
   profileNote.textContent = `Deleted “${name}”`;
+}
+
+function normalizeSignalQueue(symbols) {
+  const unique = new Set();
+  for (const symbol of Array.isArray(symbols) ? symbols : []) {
+    const normalized = String(symbol || "").trim().toUpperCase();
+    if (/^[A-Z0-9.-]{1,16}$/.test(normalized)) unique.add(normalized);
+    if (unique.size >= SIGNAL_QUEUE_LIMIT) break;
+  }
+  return Array.from(unique);
+}
+
+function loadSignalQueue() {
+  try {
+    return normalizeSignalQueue(JSON.parse(window.localStorage.getItem(SIGNAL_QUEUE_KEY) || "[]"));
+  } catch (_error) {
+    return [];
+  }
+}
+
+function storeSignalQueue(symbols) {
+  try {
+    window.localStorage.setItem(SIGNAL_QUEUE_KEY, JSON.stringify(normalizeSignalQueue(symbols)));
+    return true;
+  } catch (_error) {
+    signalQueueNote.textContent = "Could not save this queue in this browser";
+    return false;
+  }
+}
+
+function renderSignalQueue(note = "") {
+  const queue = loadSignalQueue();
+  signalQueueSymbols.innerHTML = "";
+  if (queue.length) {
+    for (const symbol of queue) {
+      const chip = document.createElement("span");
+      chip.textContent = symbol;
+      signalQueueSymbols.appendChild(chip);
+    }
+  } else {
+    const empty = document.createElement("span");
+    empty.className = "signal-queue-empty";
+    empty.textContent = "No queued signals";
+    signalQueueSymbols.appendChild(empty);
+  }
+  loadSignalQueueButton.disabled = !queue.length;
+  clearSignalQueueButton.disabled = !queue.length;
+  signalQueueNote.textContent = note || (queue.length
+    ? `${queue.length} queued ${queue.length === 1 ? "symbol" : "symbols"} · Load fills Symbols only`
+    : "Queue current Risk Pulse signals for a deliberate follow-up scan.");
+}
+
+function queueCurrentSignals() {
+  const symbols = normalizeSignalQueue(
+    latestRows.filter((row) => isRiskSignal(row)).map((row) => row.symbol)
+  );
+  if (!symbols.length) return;
+  const existing = loadSignalQueue();
+  const queue = normalizeSignalQueue([...symbols, ...existing]);
+  if (!storeSignalQueue(queue)) return;
+  const added = queue.filter((symbol) => !existing.includes(symbol)).length;
+  renderSignalQueue(added ? `Queued ${added} new ${added === 1 ? "signal" : "signals"}` : "Signals are already queued");
+  queueSignalsButton.disabled = true;
+  queueSignalsButtonLabel.textContent = added ? "Queued" : "Already queued";
+  window.setTimeout(() => renderRunBrief(latestRows), 1600);
+}
+
+function loadSignalQueueIntoSymbols() {
+  const queue = loadSignalQueue();
+  if (!queue.length) return;
+  symbolsInput.value = queue.join(",");
+  saveSettings();
+  clearAutoRefresh("Signal Queue loaded — click Calculate to run");
+  renderSignalQueue(`${queue.length} queued ${queue.length === 1 ? "symbol" : "symbols"} loaded · Click Calculate to run`);
+}
+
+function clearSignalQueue() {
+  try {
+    window.localStorage.removeItem(SIGNAL_QUEUE_KEY);
+    renderSignalQueue("Signal Queue cleared");
+  } catch (_error) {
+    signalQueueNote.textContent = "Could not clear this queue in this browser";
+  }
 }
 
 function setRunExportState() {
@@ -1081,6 +1172,9 @@ function renderRunBrief(rows) {
   briefUsableCount.textContent = rows.length ? `${usable.length}/${rows.length}` : "--";
   briefQualityCount.textContent = rows.length ? (attention.length ? `${attention.length} review` : "Clean") : "--";
   copyRunBriefButtonLabel.textContent = "Copy run brief";
+  queueSignalsButtonLabel.textContent = signals.length
+    ? `Queue ${signals.length} ${signals.length === 1 ? "signal" : "signals"}`
+    : "Queue signals";
 
   if (!rows.length) {
     runBrief.dataset.tone = "idle";
@@ -1088,6 +1182,7 @@ function renderRunBrief(rows) {
     runBriefSummary.textContent = "Calculate a basket to create a concise research handoff.";
     runBriefStatus.textContent = "Awaiting run";
     runBriefText = "";
+    queueSignalsButton.disabled = true;
     copyRunBriefButton.disabled = true;
     return;
   }
@@ -1106,6 +1201,7 @@ function renderRunBrief(rows) {
       : `${usable.length} usable readings across ${rows.length} symbols are within the current Risk Pulse rules.`;
   runBriefStatus.textContent = hasErrors ? "Data review" : signals.length ? "Signal watch" : attention.length ? "Quality watch" : "Calm snapshot";
   runBriefText = buildRunBrief(rows, signals, thresholds);
+  queueSignalsButton.disabled = !signals.length;
   copyRunBriefButton.disabled = false;
 }
 
@@ -1812,6 +1908,8 @@ deleteListButton.addEventListener("click", deleteSelectedList);
 saveProfileButton.addEventListener("click", saveCurrentProfile);
 loadProfileButton.addEventListener("click", loadSelectedProfile);
 deleteProfileButton.addEventListener("click", deleteSelectedProfile);
+loadSignalQueueButton.addEventListener("click", loadSignalQueueIntoSymbols);
+clearSignalQueueButton.addEventListener("click", clearSignalQueue);
 savedProfileSelect.addEventListener("change", () => renderResearchProfiles(savedProfileSelect.value));
 shareSetupButton.addEventListener("click", copySharedSetup);
 savedListSelect.addEventListener("change", () => renderSavedLists(savedListSelect.value));
@@ -1835,6 +1933,7 @@ for (const control of [pulseLevelInput, pulseMoveInput]) {
   });
 }
 copyPulseButton.addEventListener("click", copyPulseBrief);
+queueSignalsButton.addEventListener("click", queueCurrentSignals);
 copyRunBriefButton.addEventListener("click", copyRunBrief);
 chartSymbolSelect.addEventListener("change", () => renderChart(historyRows));
 window.addEventListener("resize", () => renderChart(historyRows));
@@ -1854,6 +1953,7 @@ loadSettings();
 applySharedSetup();
 renderSavedLists();
 renderResearchProfiles();
+renderSignalQueue();
 setRunExportState();
 updateResultSummary([]);
 renderRunBrief([]);
