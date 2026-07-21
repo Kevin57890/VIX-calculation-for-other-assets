@@ -35,8 +35,9 @@ The preview uses sample values to show the local workflow: choose or save a
 symbol list, save or load a non-sensitive research profile, set quote-quality
 controls, share the setup, calculate VIX-style 30-day implied volatility,
 review the run summary, focus the detailed table on the signals that matter,
-copy a full Run Brief for a research log or team handoff, export the current
-run, review per-symbol diagnostics, inspect filtered history
+copy a full Run Brief for a research log or team handoff, queue current signals
+for a deliberate follow-up scan, export the current run, review per-symbol
+diagnostics, inspect filtered history
 analytics, and export filtered recorded history. Actual calculations require
 your own MarketData.app token and live, delayed, or cached option-chain access.
 
@@ -100,6 +101,8 @@ python3 asset_vix.py --symbols SPY,QQQ --mode delayed --json --fail-on-non-ok
   or incomplete history baselines without running another market-data query
 - One-click Run Briefs that package current risk signals, data-quality context,
   threshold rules, focus state, and every current reading for research handoffs
+- Browser-local Signal Queue for collecting current Risk Pulse symbols and
+  loading them into a future scan without automatically requesting new data
 - Current-run CSV and JSON exports from the results table
 - Filtered history CSV and JSON exports from the selected history view
 - Current-run summary for OK, warning, error, and average 30-day values

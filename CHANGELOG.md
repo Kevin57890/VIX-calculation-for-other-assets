@@ -7,6 +7,16 @@ All notable project changes are summarized here.
 - Reworked the GitHub README homepage so the formula section uses stable
   plain-text notation instead of Markdown math blocks.
 
+## 1.16.0 - 2026-07-21
+
+- Added a browser-local Signal Queue that collects symbols meeting the current
+  Risk Pulse rules and can load them into the Symbols field for a deliberate
+  follow-up scan.
+- Kept queue loading non-executing: auto refresh pauses and the user still
+  explicitly clicks Calculate before any market-data request begins.
+- Added a warm, low-noise queue card and matching Run Brief action, then
+  refreshed the GitHub preview to show the monitoring handoff workflow.
+
 ## 1.15.0 - 2026-07-21
 
 - Added a one-click Run Brief that turns the current calculation into a concise,
