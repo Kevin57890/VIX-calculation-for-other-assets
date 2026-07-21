@@ -98,6 +98,15 @@ const mainForward = document.querySelector("#mainForward");
 const mainK0 = document.querySelector("#mainK0");
 const mainStrikes = document.querySelector("#mainStrikes");
 const mainRates = document.querySelector("#mainRates");
+const runBrief = document.querySelector("#runBrief");
+const runBriefTitle = document.querySelector("#runBriefTitle");
+const runBriefSummary = document.querySelector("#runBriefSummary");
+const runBriefStatus = document.querySelector("#runBriefStatus");
+const briefSignalCount = document.querySelector("#briefSignalCount");
+const briefUsableCount = document.querySelector("#briefUsableCount");
+const briefQualityCount = document.querySelector("#briefQualityCount");
+const copyRunBriefButton = document.querySelector("#copyRunBriefButton");
+const copyRunBriefButtonLabel = document.querySelector("#copyRunBriefButtonLabel");
 let tokenConfigured = false;
 let tokenPanelForcedOpen = false;
 let historyRows = [];
@@ -109,6 +118,7 @@ let autoRefreshTicker = null;
 let autoRefreshDeadline = null;
 let queryInProgress = false;
 let pulseBrief = "";
+let runBriefText = "";
 const HISTORY_FETCH_LIMIT = 500;
 const HISTORY_TABLE_LIMIT = 25;
 const SCANNER_LIST_LIMIT = 12;
@@ -583,16 +593,22 @@ function focusLabel() {
   return labels[resultFocusSelect.value] || labels.all;
 }
 
-function isRiskSignal(row, thresholds = pulseThresholds()) {
+function riskSignalDetails(row, thresholds = pulseThresholds()) {
   const value = rowAssetVix(row);
-  if (value === null) return false;
+  if (value === null) return [];
   const baseline = historyBaseline(row);
   const changePercent = optionalNumber(row.change_from_previous_pct);
-  return (
-    value >= thresholds.level ||
-    baseline.regime === "high" ||
-    (changePercent !== null && Math.abs(changePercent) >= thresholds.move)
-  );
+  return [
+    value >= thresholds.level ? `level ${formatValue(value)} ≥ ${formatValue(thresholds.level)}` : "",
+    baseline.regime === "high" ? `${formatPercentile(baseline.percentile)} percentile history` : "",
+    changePercent !== null && Math.abs(changePercent) >= thresholds.move
+      ? `${formatSignedPercent(changePercent)} since prior`
+      : "",
+  ].filter(Boolean);
+}
+
+function isRiskSignal(row, thresholds = pulseThresholds()) {
+  return riskSignalDetails(row, thresholds).length > 0;
 }
 
 function focusedResultRows(rows) {
@@ -1012,6 +1028,87 @@ function buildPulseBrief(items, signals, thresholds) {
   ].join("\n");
 }
 
+function buildRunBrief(rows, signals, thresholds) {
+  const usable = rows.filter((row) => rowAssetVix(row) !== null);
+  const attention = rows.filter((row) => badgeClass(row.status) !== "ok");
+  const shown = focusedResultRows(rows);
+  const priorityLines = signals.length
+    ? signals.slice(0, 6).map((signal) => `- ${signal.row.symbol}: ${signal.details.join(" · ")}`)
+    : ["- No current readings meet the configured alert rules."];
+  const qualityLines = attention.length
+    ? attention.map((row) => `- ${row.symbol || "UNKNOWN"}: ${row.status || "warning"} · ${row.reason || "Needs review"}`)
+    : ["- No warnings or errors in this run."];
+  const readingLines = rows.map((row) => {
+    const value = rowAssetVix(row);
+    const comparison = previousRunComparison(row);
+    const baseline = historyBaseline(row);
+    const reading = value === null ? String(row.status || "unavailable") : formatValue(value);
+    return `- ${row.symbol || "UNKNOWN"}: ${reading} · ${comparison.text} · ${baseline.compact}`;
+  });
+  return [
+    "AssetVIX Run Brief",
+    `Generated: ${new Date().toLocaleString()}`,
+    `Scope: ${rows.length} symbols · ${usable.length} usable readings · ${attention.length} warning/error`,
+    `Risk rules: level ≥ ${formatValue(thresholds.level)} · move ≥ ${formatValue(thresholds.move)}%`,
+    `Results focus: ${focusLabel()} (${shown.length}/${rows.length} shown)`,
+    "",
+    "Priority signals",
+    ...priorityLines,
+    "",
+    "Data quality",
+    ...qualityLines,
+    "",
+    "All readings",
+    ...readingLines,
+    "",
+    "Screening aid only · not investment advice.",
+  ].join("\n");
+}
+
+function renderRunBrief(rows) {
+  const thresholds = pulseThresholds();
+  const usable = rows.filter((row) => rowAssetVix(row) !== null);
+  const attention = rows.filter((row) => badgeClass(row.status) !== "ok");
+  const signals = usable
+    .map((row) => ({ row, details: riskSignalDetails(row, thresholds) }))
+    .filter((signal) => signal.details.length)
+    .sort((left, right) => {
+      if (left.details.length !== right.details.length) return right.details.length - left.details.length;
+      return (rowAssetVix(right.row) || 0) - (rowAssetVix(left.row) || 0);
+    });
+
+  briefSignalCount.textContent = rows.length ? String(signals.length) : "--";
+  briefUsableCount.textContent = rows.length ? `${usable.length}/${rows.length}` : "--";
+  briefQualityCount.textContent = rows.length ? (attention.length ? `${attention.length} review` : "Clean") : "--";
+  copyRunBriefButtonLabel.textContent = "Copy run brief";
+
+  if (!rows.length) {
+    runBrief.dataset.tone = "idle";
+    runBriefTitle.textContent = "Run Brief";
+    runBriefSummary.textContent = "Calculate a basket to create a concise research handoff.";
+    runBriefStatus.textContent = "Awaiting run";
+    runBriefText = "";
+    copyRunBriefButton.disabled = true;
+    return;
+  }
+
+  const hasErrors = rows.some((row) => badgeClass(row.status) === "error");
+  runBrief.dataset.tone = signals.length ? "signal" : attention.length ? "attention" : "calm";
+  runBriefTitle.textContent = signals.length
+    ? `${signals.length} priority ${signals.length === 1 ? "signal" : "signals"} to review`
+    : attention.length
+      ? "Review data quality before acting"
+      : "No current risk signals";
+  runBriefSummary.textContent = signals.length
+    ? `${signals.slice(0, 3).map((signal) => signal.row.symbol).join(" · ")} ${signals.length > 3 ? "and others " : ""}meet your current Risk Pulse rules.`
+    : attention.length
+      ? `${attention.length} result${attention.length === 1 ? " needs" : "s need"} data-quality review; ${usable.length} usable reading${usable.length === 1 ? "" : "s"} remain.`
+      : `${usable.length} usable readings across ${rows.length} symbols are within the current Risk Pulse rules.`;
+  runBriefStatus.textContent = hasErrors ? "Data review" : signals.length ? "Signal watch" : attention.length ? "Quality watch" : "Calm snapshot";
+  runBriefText = buildRunBrief(rows, signals, thresholds);
+  copyRunBriefButton.disabled = false;
+}
+
 function fallbackCopyText(value) {
   const textarea = document.createElement("textarea");
   textarea.value = value;
@@ -1070,6 +1167,28 @@ async function copyPulseBrief() {
   window.setTimeout(() => {
     copyPulseButtonLabel.textContent = "Copy brief";
     copyPulseButton.disabled = !pulseBrief;
+  }, 1600);
+}
+
+async function copyRunBrief() {
+  if (!runBriefText) return;
+  copyRunBriefButton.disabled = true;
+  copyRunBriefButtonLabel.textContent = "Copying…";
+  let copied = false;
+  try {
+    if (navigator.clipboard?.writeText && window.isSecureContext) {
+      await navigator.clipboard.writeText(runBriefText);
+      copied = true;
+    } else {
+      copied = fallbackCopyText(runBriefText);
+    }
+  } catch (_error) {
+    copied = fallbackCopyText(runBriefText);
+  }
+  copyRunBriefButtonLabel.textContent = copied ? "Copied" : "Copy failed";
+  window.setTimeout(() => {
+    copyRunBriefButtonLabel.textContent = "Copy run brief";
+    copyRunBriefButton.disabled = !runBriefText;
   }, 1600);
 }
 
@@ -1164,6 +1283,7 @@ function renderRows(rows, { markRun = true } = {}) {
   latestRows = rows.slice();
   setRunExportState();
   updateResultSummary(rows);
+  renderRunBrief(rows);
   renderRiskPulse(rows);
   renderScanner(rows);
   resultsBody.innerHTML = "";
@@ -1715,6 +1835,7 @@ for (const control of [pulseLevelInput, pulseMoveInput]) {
   });
 }
 copyPulseButton.addEventListener("click", copyPulseBrief);
+copyRunBriefButton.addEventListener("click", copyRunBrief);
 chartSymbolSelect.addEventListener("change", () => renderChart(historyRows));
 window.addEventListener("resize", () => renderChart(historyRows));
 document.addEventListener("visibilitychange", () => {
@@ -1735,6 +1856,7 @@ renderSavedLists();
 renderResearchProfiles();
 setRunExportState();
 updateResultSummary([]);
+renderRunBrief([]);
 renderRiskPulse([]);
 renderHistorySummary(null);
 updateFilteredHistoryLinks();

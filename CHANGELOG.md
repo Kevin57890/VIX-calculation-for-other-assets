@@ -7,6 +7,17 @@ All notable project changes are summarized here.
 - Reworked the GitHub README homepage so the formula section uses stable
   plain-text notation instead of Markdown math blocks.
 
+## 1.15.0 - 2026-07-21
+
+- Added a one-click Run Brief that turns the current calculation into a concise,
+  copyable research handoff: priority Risk Pulse signals, data-quality review,
+  configured rules, visible-focus state, and the complete reading list.
+- Kept Run Briefs entirely browser-local and derived from the existing run, so
+  they do not send another market-data request or include tokens or local
+  history.
+- Added a polished briefing layer between the selected reading and results table
+  and refreshed the GitHub preview to make the handoff workflow visible.
+
 ## 1.14.0 - 2026-07-18
 
 - Added a browser-saved Results Focus control for isolating actionable Risk
