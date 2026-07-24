@@ -415,6 +415,21 @@
                 <p id="pulseNote">Calculate a basket to surface priority volatility signals</p>
               </div>
               <div class="pulse-tools">
+                <div class="pulse-lens" role="group" aria-label="Risk Lens presets">
+                  <span class="pulse-lens-label">Risk Lens</span>
+                  <button class="pulse-lens-button" type="button" data-pulse-lens="Early watch" data-pulse-level="25" data-pulse-move="7" aria-pressed="false">
+                    <span>Early</span>
+                    <small>25 · 7%</small>
+                  </button>
+                  <button class="pulse-lens-button" type="button" data-pulse-lens="Balanced" data-pulse-level="30" data-pulse-move="10" aria-pressed="true">
+                    <span>Balanced</span>
+                    <small>30 · 10%</small>
+                  </button>
+                  <button class="pulse-lens-button" type="button" data-pulse-lens="Stress event" data-pulse-level="40" data-pulse-move="15" aria-pressed="false">
+                    <span>Stress</span>
+                    <small>40 · 15%</small>
+                  </button>
+                </div>
                 <label class="pulse-threshold-control">
                   <span>Level ≥</span>
                   <input id="pulseLevelInput" type="number" min="0" max="1000" step="1" value="30" aria-label="Pulse level alert threshold" />

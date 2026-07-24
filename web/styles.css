@@ -1622,6 +1622,67 @@ tbody tr:hover {
   flex-wrap: wrap;
 }
 
+/* 1.17 Risk Lens: preset alert stances remain legible beside exact rules. */
+.pulse-lens {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 30px;
+  padding: 3px;
+  border: 1px solid rgba(49, 95, 159, 0.2);
+  border-radius: 999px;
+  background:
+    linear-gradient(135deg, rgba(235, 243, 255, 0.94), rgba(255, 255, 255, 0.78));
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.65);
+}
+
+.pulse-lens-label {
+  padding: 0 5px 0 7px;
+  color: #496a95;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.pulse-lens-button {
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  align-items: baseline;
+  gap: 4px;
+  min-height: 22px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: #5d7080;
+  font-size: 10px;
+  font-weight: 790;
+  line-height: 1;
+  white-space: nowrap;
+  transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, color 160ms ease;
+}
+
+.pulse-lens-button small {
+  color: inherit;
+  font-size: 9px;
+  font-weight: 760;
+  opacity: 0.72;
+}
+
+.pulse-lens-button:hover:not(.is-active) {
+  background: rgba(49, 95, 159, 0.08);
+  color: #315f9f;
+}
+
+.pulse-lens-button.is-active {
+  border-color: rgba(49, 95, 159, 0.3);
+  background: linear-gradient(135deg, #3d6fac, #315f9f);
+  box-shadow: 0 4px 10px rgba(49, 95, 159, 0.22);
+  color: #f4f8ff;
+}
+
 .pulse-threshold-control {
   display: inline-flex;
   align-items: center;
@@ -1907,6 +1968,21 @@ tbody tr:hover {
 
   .pulse-tools {
     justify-content: flex-start;
+  }
+
+  .pulse-lens {
+    width: 100%;
+    justify-content: space-between;
+    overflow: visible;
+  }
+
+  .pulse-lens-label {
+    padding-right: 3px;
+  }
+
+  .pulse-lens-button {
+    gap: 3px;
+    padding: 0 5px;
   }
 
   table {

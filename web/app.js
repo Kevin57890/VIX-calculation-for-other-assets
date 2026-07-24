@@ -59,6 +59,7 @@ const summaryAverage = document.querySelector("#summaryAverage");
 const pulseNote = document.querySelector("#pulseNote");
 const pulseLevelInput = document.querySelector("#pulseLevelInput");
 const pulseMoveInput = document.querySelector("#pulseMoveInput");
+const pulseLensButtons = Array.from(document.querySelectorAll("[data-pulse-lens]"));
 const pulseLevelCount = document.querySelector("#pulseLevelCount");
 const pulseMoveCount = document.querySelector("#pulseMoveCount");
 const pulseReady = document.querySelector("#pulseReady");
@@ -1104,6 +1105,35 @@ function pulseThresholds() {
   };
 }
 
+function pulseLensLabel(thresholds = pulseThresholds()) {
+  const lens = pulseLensButtons.find(
+    (button) =>
+      Number(button.dataset.pulseLevel) === thresholds.level &&
+      Number(button.dataset.pulseMove) === thresholds.move
+  );
+  return lens?.dataset.pulseLens || "Custom";
+}
+
+function syncPulseLens(thresholds = pulseThresholds()) {
+  for (const button of pulseLensButtons) {
+    const active =
+      Number(button.dataset.pulseLevel) === thresholds.level &&
+      Number(button.dataset.pulseMove) === thresholds.move;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", String(active));
+  }
+}
+
+function applyPulseLens(button) {
+  const level = Number(button.dataset.pulseLevel);
+  const move = Number(button.dataset.pulseMove);
+  if (!Number.isFinite(level) || !Number.isFinite(move)) return;
+  pulseLevelInput.value = String(level);
+  pulseMoveInput.value = String(move);
+  saveSettings();
+  renderRows(latestRows, { markRun: false });
+}
+
 function buildPulseBrief(items, signals, thresholds) {
   const rules = `Rules: level ≥ ${formatValue(thresholds.level)} · move ≥ ${formatValue(thresholds.move)}%`;
   const lines = signals.length
@@ -1112,6 +1142,7 @@ function buildPulseBrief(items, signals, thresholds) {
   return [
     "AssetVIX Risk Pulse",
     `Generated: ${new Date().toLocaleString()}`,
+    `Risk Lens: ${pulseLensLabel(thresholds)}`,
     rules,
     `Usable readings: ${items.length}`,
     "",
@@ -1140,6 +1171,7 @@ function buildRunBrief(rows, signals, thresholds) {
     "AssetVIX Run Brief",
     `Generated: ${new Date().toLocaleString()}`,
     `Scope: ${rows.length} symbols · ${usable.length} usable readings · ${attention.length} warning/error`,
+    `Risk Lens: ${pulseLensLabel(thresholds)}`,
     `Risk rules: level ≥ ${formatValue(thresholds.level)} · move ≥ ${formatValue(thresholds.move)}%`,
     `Results focus: ${focusLabel()} (${shown.length}/${rows.length} shown)`,
     "",
@@ -1290,6 +1322,7 @@ async function copyRunBrief() {
 
 function renderRiskPulse(rows) {
   const thresholds = pulseThresholds();
+  syncPulseLens(thresholds);
   const items = rows
     .map((row) => ({ row, value: rowAssetVix(row) }))
     .filter((item) => item.value !== null)
@@ -1932,6 +1965,7 @@ for (const control of [pulseLevelInput, pulseMoveInput]) {
     renderRows(latestRows, { markRun: false });
   });
 }
+pulseLensButtons.forEach((button) => button.addEventListener("click", () => applyPulseLens(button)));
 copyPulseButton.addEventListener("click", copyPulseBrief);
 queueSignalsButton.addEventListener("click", queueCurrentSignals);
 copyRunBriefButton.addEventListener("click", copyRunBrief);

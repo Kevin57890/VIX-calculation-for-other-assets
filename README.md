@@ -36,7 +36,8 @@ symbol list, save or load a non-sensitive research profile, set quote-quality
 controls, share the setup, calculate VIX-style 30-day implied volatility,
 review the run summary, focus the detailed table on the signals that matter,
 copy a full Run Brief for a research log or team handoff, queue current signals
-for a deliberate follow-up scan, export the current run, review per-symbol
+for a deliberate follow-up scan, tune the Risk Lens for early watch, balanced,
+or stress-event monitoring, export the current run, review per-symbol
 diagnostics, inspect filtered history
 analytics, and export filtered recorded history. Actual calculations require
 your own MarketData.app token and live, delayed, or cached option-chain access.
@@ -92,6 +93,8 @@ python3 asset_vix.py --symbols SPY,QQQ --mode delayed --json --fail-on-non-ok
   moves into a compact, clickable monitoring shortlist
 - Browser-saved Risk Pulse level and percentage-move thresholds, with a
   one-click plain-text briefing for a research log or team update
+- One-click Risk Lens presets for early watch, balanced monitoring, and stress
+  events; each reinterprets the current run locally without another data request
 - One-click shareable research-setup links for symbols, data mode, quality
   filters, and Risk Pulse rules; tokens, results, and local history are never
   included

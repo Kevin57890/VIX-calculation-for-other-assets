@@ -7,6 +7,16 @@ All notable project changes are summarized here.
 - Reworked the GitHub README homepage so the formula section uses stable
   plain-text notation instead of Markdown math blocks.
 
+## 1.17.0 - 2026-07-24
+
+- Added one-click Risk Lens presets for early watch, balanced monitoring, and
+  stress events. Lenses update the Risk Pulse interpretation immediately, with
+  no new market-data request.
+- Carried the active lens into copied Risk Pulse and Run Brief text so handoffs
+  preserve the alert stance as well as the exact thresholds.
+- Refined the Risk Pulse tool strip with a compact, high-contrast preset
+  control that keeps precise inputs available for custom rules.
+
 ## 1.16.0 - 2026-07-21
 
 - Added a browser-local Signal Queue that collects symbols meeting the current
